@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>baseline</title>
+</head>
+<body>
+<div id="app"></div>
+<script type="module">
+import { createApp, defineComponent } from 'vue'
+import ElementPlus from 'element-plus'
+import 'element-plus/dist/index.css'
+import '/src/styles/index.css'
+
+const Comp = defineComponent({
+  setup() { return { v: true } },
+  template: `
+    <el-dialog v-model="v" title="新增用户" width="min(480px, 94vw)">
+      <el-form label-width="88px">
+        <el-form-item label="工号" required><el-input placeholder="如 00660301" /></el-form-item>
+        <el-form-item label="姓名" required><el-input placeholder="真实姓名" /></el-form-item>
+        <el-form-item label="角色" required>
+          <el-select style="width:100%">
+            <el-option label="产线用户" value="line" /><el-option label="管理员" value="admin" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="初始口令"><el-input type="password" show-password placeholder="至少 6 位" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button>取消</el-button>
+        <el-button type="primary">保存</el-button>
+      </template>
+    </el-dialog>
+  `
+})
+createApp({ components: { Comp }, template: '<Comp />' }).use(ElementPlus).mount('#app')
+</script>
+</body>
+</html>

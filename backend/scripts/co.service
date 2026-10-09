@@ -1,0 +1,41 @@
+[Unit]
+Description=产线转场管理轻应用 (FastAPI/uvicorn · single-port API+SPA)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=changeover
+Group=changeover
+WorkingDirectory=/opt/changeover/backend
+
+# 应用配置（DB_PATH / JWT_SECRET / SMB_* / WB_* / SEED_ADMIN_* ...）
+# 注意：systemd 的 EnvironmentFile 不解析 export，且反斜杠是转义符，
+#       Windows 风格路径需写成双反斜杠，例如 SMB_ROOT=slenk_\\FA_ROOT
+EnvironmentFile=/opt/changeover/backend/.env
+Environment=PYTHONUNBUFFERED=1
+
+# 启动前自检：输出报告到日志；加 "-" 前缀表示失败也不阻断启动（避免共享盘未就绪导致服务起不来）
+ExecStartPre=-/opt/changeover/backend/.venv/bin/python -m app.preflight
+
+ExecStart=/opt/changeover/backend/.venv/bin/python -m uvicorn app.main:app \
+    --host 0.0.0.0 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips=*
+
+Restart=always
+RestartSec=5
+TimeoutStopSec=25
+KillSignal=SIGINT
+
+StandardOutput=append:/var/log/changeover/app.log
+StandardError=append:/var/log/changeover/app.err.log
+
+# 加固
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/changeover /var/log/changeover
+LimitNOFILE=8192
+
+[Install]
+WantedBy=multi-user.target

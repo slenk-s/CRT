@@ -1,0 +1,13 @@
+[Unit]
+Description=产线转场管理轻应用 · 夜间维护（SQLite 备份 + 超期草稿清理）
+
+[Service]
+Type=oneshot
+User=changeover
+Group=changeover
+WorkingDirectory=/opt/changeover/backend
+EnvironmentFile=/opt/changeover/backend/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/changeover/backend/scripts/maintenance.sh
+StandardOutput=append:/var/log/changeover/maintenance.log
+StandardError=append:/var/log/changeover/maintenance.err.log

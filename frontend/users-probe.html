@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>users probe</title>
+<style>html,body{margin:0;}</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script type="module">
+import { createApp } from 'vue'
+import { createPinia } from 'pinia'
+import { createRouter, createWebHashHistory } from 'vue-router'
+import ElementPlus from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import 'element-plus/dist/index.css'
+import * as Icons from '@element-plus/icons-vue'
+import AppShell from '/src/layouts/AppShell.vue'
+import UserManageView from '/src/views/admin/UserManageView.vue'
+import { useUserStore } from '/src/stores/user'
+import '/src/styles/index.css'
+
+const router = createRouter({
+  history: createWebHashHistory(),
+  routes: [{ path: '/:rest(.*)', component: AppShell, children: [{ path: '/admin/users', component: UserManageView }] }],
+})
+
+const app = createApp({ template: '<router-view />' })
+for (const [k, c] of Object.entries(Icons)) app.component(k, c)
+const pinia = createPinia()
+app.use(pinia)
+app.use(router)
+app.use(ElementPlus, { locale: zhCn })
+app.mount('#app')
+await router.isReady()
+await useUserStore(pinia).fetchMe().catch(() => {})
+console.log('PROBE_READY')
+</script>
+</body>
+</html>

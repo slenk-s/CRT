@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>repro</title>
+<style>html,body{margin:0;background:rgb(245,247,250);}#app{min-height:100vh;}</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="module">
+import { createApp } from 'vue'
+import ElementPlus from 'element-plus'
+import 'element-plus/dist/index.css'
+import '/src/styles/index.css'
+import Repro from './repro-dialog.vue'
+createApp(Repro).use(ElementPlus).mount('#app')
+</script>
+</body>
+</html>
