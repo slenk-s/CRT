@@ -38,9 +38,25 @@ class MesApiSource:
 
     @classmethod
     def try_create(cls) -> "MesApiSource | None":
+<<<<<<< HEAD
         path = (config.WB_MAIL_PATH or "").strip()
         if path and path not in sys.path:
             sys.path.insert(0, path)
+=======
+        # 候选目录（按优先级）：显式配置 → 随包目录（backend/ 及其上级）。
+        # 随包部署时 wb_mail 与本文件的 app/ 同级（backend/wb_mail），
+        # 因此 WB_MAIL_PATH 留空也能被找到，避免“改了 WS_SOURCE 才炸”。
+        candidates: list[str] = []
+        path = (config.WB_MAIL_PATH or "").strip()
+        if path:
+            candidates.append(path)
+        for p in (str(config.BASE_DIR), str(config.BASE_DIR.parent)):
+            if p and p not in candidates:
+                candidates.append(p)
+        for p in candidates:
+            if p and p not in sys.path:
+                sys.path.insert(0, p)
+>>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
         try:
             from wb_mail import mes_api  # type: ignore
         except Exception:  # noqa: BLE001  包未安装 / 导入失败 → 不可用

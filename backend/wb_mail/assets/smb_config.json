@@ -1,0 +1,36 @@
+{
+  "smb": {
+    "share": "运营中心",
+    "base_subpath": "惠州TV工厂\\TV工厂计划部\\TV工厂计划共享",
+    "user_default": "",
+    "password_env": "SMB_PASSWORD",
+    "_note": "车间模板与共享路径（非机密）。server 不在此文件：由 WB_SMB_HOST 环境变量注入（T盘 wb-mail/wb_endpoints.env）。口令仅从 password_env 指定环境变量或交互读取。",
+    "workshops": {
+      "一车间": {
+        "subdir": "一车间A栋整机",
+        "template": "生产一车间{M}月{D}日计划.xlsx",
+        "scan_year_subdir": true
+      },
+      "二车间": {
+        "subdir": "二车间整机计划",
+        "template": "生产二车间{M}月{D}日计划.xlsx",
+        "scan_year_subdir": true
+      },
+      "三车间": {
+        "subdir": "三车间整机计划",
+        "template": "生产三车间计划{M}月{D}日.xlsx",
+        "scan_year_subdir": true
+      },
+      "四车间": {
+        "subdir": "四车间整机计划",
+        "template": "生产四车间{M}月{D}日整机计划.xlsx",
+        "scan_year_subdir": true
+      },
+      "七车间": {
+        "subdir": "七车间计划",
+        "template": "生产七车间{M}月{D}号整机计划.xlsx",
+        "scan_year_subdir": true
+      }
+    }
+  }
+}

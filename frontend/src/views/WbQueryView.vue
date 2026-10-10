@@ -38,7 +38,11 @@ function switchMode(m: 'batch' | 'bom') {
 }
 
 function fillDemo() {
+<<<<<<< HEAD
   raw.value = mode.value === 'batch' ? 'DEMO-BATCH-001\nDEMO-BATCH-002' : 'DEMO-BOM-001'
+=======
+  raw.value = mode.value === 'batch' ? 'GHH500277A\nGLU500297A' : 'Z2U10401010120,Z2U10401008960'
+>>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
 }
 
 const okCount = () => result.value?.results.filter((r) => r.ok).length || 0
@@ -89,8 +93,13 @@ onMounted(async () => {
         :rows="4"
         :placeholder="
           mode === 'batch'
+<<<<<<< HEAD
             ? '每行一个批次号，或用逗号分隔，例如：\nDEMO-BATCH-001\nDEMO-BATCH-002'
             : '每行一个 BOM，或用逗号分隔，例如：\nDEMO-BOM-001, DEMO-BOM-002'
+=======
+            ? '每行一个批次号，或用逗号分隔，例如：\nGHH500277A\nGLU500297A'
+            : '每行一个 BOM，或用逗号分隔，例如：\nZ2U10401010120,Z2U10401008960'
+>>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
         "
       />
       <div class="q-actions">
@@ -139,4 +148,8 @@ onMounted(async () => {
 .kvcard h4 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .kvcard.bad h4 { border-left-color: var(--danger); }
 .key { word-break: break-all; }
+<<<<<<< HEAD
 </style>
+=======
+</style>
+>>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)

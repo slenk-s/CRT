@@ -1,7 +1,12 @@
 <script setup lang="ts">
+<<<<<<< HEAD
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+=======
+import { onUnmounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+>>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
 import { useUserStore } from '@/stores/user'
 
 const user = useUserStore()
@@ -11,12 +16,62 @@ const route = useRoute()
 const form = reactive({ emp_id: '', password: '' })
 const loading = ref(false)
 const launching = ref(false)
+<<<<<<< HEAD
 
 async function submit() {
   if (!form.emp_id.trim() || !form.password) {
     ElMessage.warning('请输入工号与口令')
     return
   }
+=======
+const loginError = ref('')
+const loginErrorVisible = ref(false)
+let loginErrorTimer: ReturnType<typeof setTimeout> | undefined
+
+function closeLoginError() {
+  if (loginErrorTimer) clearTimeout(loginErrorTimer)
+  loginError.value = ''
+  loginErrorVisible.value = false
+}
+
+function showLoginError(message: string) {
+  if (loginErrorTimer) clearTimeout(loginErrorTimer)
+  loginError.value = message || '登录失败，请稍后重试'
+  loginErrorVisible.value = true
+  const hideTimer = setTimeout(() => {
+    loginErrorVisible.value = false
+    loginErrorTimer = setTimeout(() => {
+      loginError.value = ''
+      loginErrorVisible.value = false
+    }, 1400)
+  }, 1000)
+  loginErrorTimer = hideTimer
+}
+
+onUnmounted(() => {
+  if (loginErrorTimer) clearTimeout(loginErrorTimer)
+})
+
+function errorMessage(err: unknown): string {
+  const detail = (err as any)?.response?.data?.detail
+  if (typeof detail === 'string' && detail.trim()) return detail.trim()
+  if (detail && typeof detail === 'object') return JSON.stringify(detail)
+  const message = (err as any)?.message
+  if (typeof message === 'string' && message.trim()) return message.trim()
+  const status = (err as any)?.response?.status
+  if (status === 401) return '工号或口令错误'
+  if (status === 423 || status === 403) return '该账号当前不可登录，请联系管理员'
+  if (!(err as any)?.response) return '网络连接异常，请稍后重试'
+  return '登录失败（' + status + '）'
+}
+
+async function submit() {
+  if (!form.emp_id.trim() || !form.password) {
+    showLoginError('请输入工号与口令')
+    return
+  }
+  loginError.value = ''
+>>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
   loading.value = true
   try {
     await user.login(form.emp_id.trim(), form.password)
@@ -24,8 +79,13 @@ async function submit() {
     await new Promise((resolve) => setTimeout(resolve, 520))
     const redirect = (route.query.redirect as string) || '/changeover'
     router.replace(redirect)
+<<<<<<< HEAD
   } catch {
     // 错误提示由 axios 拦截器统一处理
+=======
+  } catch (err) {
+    showLoginError(errorMessage(err))
+>>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
   } finally {
     loading.value = false
   }
@@ -76,6 +136,19 @@ async function submit() {
         </div>
       </div>
 
+<<<<<<< HEAD
+=======
+      <div v-if="loginError" class="login-alert" :class="{ leaving: !loginErrorVisible }" role="alert" @click="closeLoginError">
+        <div class="login-alert-card">
+          <div class="login-alert-head">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 1 21h22L12 2Zm0 6c.6 0 1 .4 1 1v5.6c0 .6-.4 1-1 1s-1-.4-1-1V9c0-.6.4-1 1-1Zm0 9.2c.7 0 1.2.5 1.2 1.1s-.5 1.1-1.2 1.1-1.2-.5-1.2-1.1.5-1.1 1.2-1.1Z" /></svg>
+            <span>登录提示</span>
+          </div>
+          <p>{{ loginError }}</p>
+        </div>
+      </div>
+
+>>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
       <div class="login-footer">
         <span>PCC v1.0</span>
         <span>Secure Local Sign-in</span>
@@ -136,6 +209,7 @@ async function submit() {
   position: relative;
   border-radius: 28px;
   padding: 2px;
+<<<<<<< HEAD
   background: conic-gradient(from 140deg, rgba(45, 212, 191, .95), rgba(64, 158, 255, 1), rgba(139, 92, 246, .98), rgba(34, 211, 238, .9), rgba(45, 212, 191, .95));
   box-shadow: 0 34px 90px rgba(0, 0, 0, .48), 0 0 42px rgba(56, 189, 248, .18);
 }
@@ -192,11 +266,51 @@ async function submit() {
   height: 66px;
   margin: 0 auto 14px;
   border-radius: 22px;
+=======
+  background: conic-gradient(from 140deg, rgba(45, 212, 191, .55), rgba(56, 189, 248, .25) 25%, rgba(139, 92, 246, .52) 55%, rgba(45, 212, 191, .38));
+  box-shadow: 0 34px 80px rgba(0, 0, 0, .48), 0 0 0 1px rgba(255,255,255,.04);
+}
+.login-card-glow {
+  position: absolute;
+  inset: -58px -42px -58px -42px;
+  border-radius: 60px;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(45, 212, 191, .25), transparent 34%),
+    radial-gradient(circle at 80% 32%, rgba(99, 102, 241, .24), transparent 36%),
+    radial-gradient(circle at 50% 96%, rgba(56, 189, 248, .22), transparent 38%);
+  filter: blur(34px);
+  opacity: .72;
+  z-index: -1;
+  pointer-events: none;
+}
+.login-content {
+  position: relative;
+  border-radius: 26px;
+  padding: 34px 28px 26px;
+  background:
+    linear-gradient(160deg, rgba(12, 23, 40, .92), rgba(20, 40, 71, .88) 55%, rgba(8, 17, 31, .94)),
+    radial-gradient(circle at 80% 12%, rgba(99, 102, 241, .16), transparent 42%);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, .08);
+}
+.login-head {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  margin-bottom: 24px;
+}
+.logo {
+  width: 62px;
+  height: 62px;
+  margin-bottom: 7px;
+  border-radius: 20px;
+>>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
   display: grid;
   place-items: center;
   color: white;
   font-size: 30px;
   font-weight: 900;
+<<<<<<< HEAD
   background: linear-gradient(135deg, rgba(56, 189, 248, .95), rgba(139, 92, 246, .95));
   box-shadow: 0 16px 32px rgba(30, 144, 255, .38), inset 0 1px 0 rgba(255,255,255,.36);
   border: 1px solid rgba(255,255,255,.28);
@@ -211,6 +325,23 @@ async function submit() {
 .login-head p {
   margin: 0;
   color: rgba(214, 232, 250, .72);
+=======
+  background: linear-gradient(145deg, #06b6d4, #6366f1 55%, #8b5cf6);
+  box-shadow: 0 12px 30px rgba(99, 102, 241, .42), inset 0 1px 0 rgba(255,255,255,.3);
+}
+.login-head h1 {
+  margin: 0;
+  font-size: 23px;
+  letter-spacing: 1px;
+  background: linear-gradient(90deg, #a5f3fc, #c7d2fe);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.login-head p {
+  margin: 0;
+  color: rgba(198, 224, 245, .68);
+>>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
   font-size: 13px;
 }
 .login-form {
@@ -338,8 +469,71 @@ async function submit() {
   .login-head h1 { font-size: 21px; }
   .field-box, .login-btn { height: 48px; }
 }
+<<<<<<< HEAD
 </style>
 
+=======
+.login-alert {
+  position: absolute;
+  inset: -100px -22px auto -22px;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.login-alert-card {
+  pointer-events: auto;
+  width: min(408px, calc(100vw - 48px));
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 177, 90, .46);
+  border-radius: 18px;
+  background:
+    linear-gradient(145deg, rgba(18, 31, 53, .94), rgba(43, 33, 86, .9)),
+    linear-gradient(135deg, rgba(255, 177, 90, .12), rgba(139, 92, 246, .16));
+  box-shadow:
+    0 18px 36px rgba(0, 0, 0, .34),
+    0 0 0 1px rgba(255, 255, 255, .06) inset,
+    0 0 28px rgba(255, 177, 90, .18);
+  backdrop-filter: blur(16px);
+  cursor: pointer;
+  animation: login-alert-in .22s cubic-bezier(.34, 1.3, .5, 1);
+  transition: opacity .9s ease 1.1s, transform .9s ease 1.1s;
+}
+
+.login-alert.leaving .login-alert-card {
+  animation: none;
+  opacity: 0;
+  transform: translateY(-8px) scale(.98);
+  filter: brightness(.92);
+}
+.login-alert-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: #ffdf9e;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .6px;
+}
+.login-alert-head svg {
+  width: 18px;
+  height: 18px;
+  fill: rgba(255, 199, 102, .9);
+  filter: drop-shadow(0 0 8px rgba(255, 177, 90, .38));
+}
+.login-alert-card p {
+  margin: 0;
+  color: rgba(255, 248, 235, .92);
+  font-size: 13px;
+  line-height: 1.55;
+}
+@keyframes login-alert-in {
+  from { opacity: 0; transform: translateY(-10px) scale(.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+</style>
+>>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
 
 <style scoped>
 .login-rise-veil {

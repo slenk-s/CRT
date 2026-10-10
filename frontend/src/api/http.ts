@@ -19,12 +19,24 @@ http.interceptors.response.use(
   (error) => {
     const status = error?.response?.status
     const detail = error?.response?.data?.detail
+<<<<<<< HEAD
     if (status === 401) {
       localStorage.removeItem(TOKEN_KEY)
       if (!location.pathname.startsWith('/login')) {
         ElMessage.warning('登录已过期，请重新登录')
         location.href = '/login'
       }
+=======
+    const url = error?.config?.url || ''
+    if (status === 401) {
+      localStorage.removeItem(TOKEN_KEY)
+      if (!location.pathname.startsWith('/login') && !url.includes('/api/auth/login')) {
+        ElMessage.warning('登录已过期，请重新登录')
+        location.href = '/login'
+      }
+    } else if (url.includes('/api/auth/login')) {
+      // 登录页使用与界面主题一致的本地弹层提示
+>>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
     } else if (status === 403) {
       ElMessage.error(detail || '没有权限执行该操作')
     } else if (status === 503) {
@@ -55,4 +67,8 @@ export async function downloadFile(path: string, params: Record<string, unknown>
   URL.revokeObjectURL(url)
 }
 
+<<<<<<< HEAD
 export default http
+=======
+export default http
+>>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)

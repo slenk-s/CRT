@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+<<<<<<< HEAD
 .venv/
 venv/
 .env
@@ -34,3 +35,37 @@ Desktop.ini
 
 # Temporary/local automation notes
 .openai/
+=======
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Runtime / local data
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/data/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+*.local
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local startup notes with possible credentials
+run_.txt
+
+>>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
