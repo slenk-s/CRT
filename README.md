@@ -10,8 +10,6 @@ TCL 惠州 TV 工厂 PE 部 · 产线转产（Changeover）拍照记录与追溯
 
 - `backend/README.md`：后端开发、接口、配置、测试、部署入口
 - `frontend/README.md`：前端开发、构建、响应式规则、视觉交互
-- `docs/阶段9-部署说明.md`：Windows / Linux / systemd / Nginx / 故障排查
-- `docs/阶段10-UI与删除策略增量说明.md`：最新 UI、状态判定、删除策略增量
 
 ## 常用启动
 

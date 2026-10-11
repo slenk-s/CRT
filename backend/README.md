@@ -46,7 +46,6 @@ TCL 惠州 TV 工厂 PE 部 · 产线转产（Changeover）拍照记录与追溯
 │  │  ├─ views/admin/         # 字典管理 / 用户管理
 │  │  └─ styles/index.css     # 响应式布局与交互样式
 │  └─ dist/                   # 生产构建产物
-└─ docs/                      # 设计稿 / 增量说明 / 部署说明 / 截图
 ```
 
 ---
@@ -104,7 +103,6 @@ python -m app.preflight --strict               # 有告警即失败
 ```
 
 检查配置 / 数据库 / SMB 连通 / WB 数据源 / 前端 dist / MES 端点；致命项返回码 1。
-完整部署说明见 `docs/阶段9-部署说明.md`，本轮 UI/删除策略变更见 `docs/阶段10-UI与删除策略增量说明.md`。
 
 ---
 
@@ -256,12 +254,9 @@ npm run type-check
 | 7 | 前端（Vue3 + Element Plus） | ✅ |
 | 8 | 测试（pytest + 前端契约） | ✅ |
 | 9 | 部署（本机 / 内网 systemd） | ✅ |
-| 10 | 响应式 UI、视觉交互、删除策略增量 | ✅（见 `docs/阶段10-UI与删除策略增量说明.md`） |
 
 ---
 
 ## 9. 文档索引
 
-- `docs/阶段9-部署说明.md`：Windows / Linux 部署、systemd、Nginx、故障排查。
-- `docs/阶段10-UI与删除策略增量说明.md`：本轮响应式导航、视觉交互、状态图标、删除策略变更。
 - `frontend/README.md`：前端开发、构建与部署约定。

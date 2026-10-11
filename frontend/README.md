@@ -76,7 +76,7 @@ server {
 }
 ```
 
-后端也可单端口托管 `dist/`：见 `backend/README.md` 与 `docs/阶段9-部署说明.md`。
+后端也可单端口托管 `dist/`：见 `backend/README.md` 的 2.1 节。
 
 ## 关键约定
 
