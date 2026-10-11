@@ -15,7 +15,9 @@
 """
 from __future__ import annotations
 
+import os
 import sys
+import threading
 from typing import Callable
 
 from .. import config
@@ -29,6 +31,11 @@ class WbQueryError(RuntimeError):
     """单个批次/BOM 查询失败（路由层 → 该条 ok=false）。"""
 
 
+# 端点注入只做一次：并发/多请求下避免重复起子进程拉取 T盘 端点文件。
+_ENDPOINT_LOAD_LOCK = threading.Lock()
+_ENDPOINTS_LOADED = threading.Event()
+
+
 # ---------------------------------------------------------------- 真实 mes_api
 class MesApiSource:
     """直接调用 wb_mail.mes_api（端点由环境变量预置，不覆盖）。"""
@@ -38,11 +45,6 @@ class MesApiSource:
 
     @classmethod
     def try_create(cls) -> "MesApiSource | None":
-<<<<<<< HEAD
-        path = (config.WB_MAIL_PATH or "").strip()
-        if path and path not in sys.path:
-            sys.path.insert(0, path)
-=======
         # 候选目录（按优先级）：显式配置 → 随包目录（backend/ 及其上级）。
         # 随包部署时 wb_mail 与本文件的 app/ 同级（backend/wb_mail），
         # 因此 WB_MAIL_PATH 留空也能被找到，避免“改了 WS_SOURCE 才炸”。
@@ -56,17 +58,29 @@ class MesApiSource:
         for p in candidates:
             if p and p not in sys.path:
                 sys.path.insert(0, p)
->>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
         try:
             from wb_mail import mes_api  # type: ignore
         except Exception:  # noqa: BLE001  包未安装 / 导入失败 → 不可用
             return None
-        # 端点已由环境变量预置；若存在 mes_env.load() 则调用（不覆盖已有端点）。
+        # 端点注入：仅当环境中仍缺端点时才去 T盘 拉取。
+        # 注意 mes_env.load() 每次都会起一个 `tchat-cli pan file download` 子进程
+        # （超时可达 30s）——若端点已由 .env/systemd 预置，这就是纯粹的每请求开销。
+        # 因此默认「有就不拉」；需要用 T盘 兜底时只补缺失的键，或设 WB_FORCE_ENV_LOAD=1。
         try:
             from wb_mail import mes_env  # type: ignore
 
-            if hasattr(mes_env, "load"):
-                mes_env.load()
+            force = (os.environ.get("WB_FORCE_ENV_LOAD", "") or "").strip().lower() in (
+                "1", "true", "yes", "on")
+            missing = []
+            checker = getattr(mes_env, "missing_required", None)
+            if callable(checker):
+                missing = checker(("TIOT_URL", "MID_API_URL"))
+            if (force or missing) and hasattr(mes_env, "load"):
+                if not _ENDPOINTS_LOADED.is_set():
+                    with _ENDPOINT_LOAD_LOCK:
+                        if not _ENDPOINTS_LOADED.is_set():
+                            mes_env.load()
+                            _ENDPOINTS_LOADED.set()
         except Exception:  # noqa: BLE001
             pass
         return cls(mes_api)

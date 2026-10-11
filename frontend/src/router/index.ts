@@ -44,11 +44,7 @@ const routes: RouteRecordRaw[] = [
     path: '/stats',
     name: 'stats',
     component: () => import('@/views/StatsView.vue'),
-<<<<<<< HEAD
-    meta: { title: '统计', requiresAdmin: true },
-=======
     meta: { title: '条目统计', requiresAdmin: true },
->>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
   },
   {
     path: '/admin/dicts',

@@ -111,8 +111,13 @@ export const api = {
     http.get<StatsResponse>('/api/stats/changeover', { params: { days } }).then((r) => r.data),
 
   // ---- WB 查询 ----
-  wbQuery: (params: { batch?: string; bom?: string }) =>
-    http.get<WbQueryResponse>('/api/wb/query', { params }).then((r) => r.data),
+  // 数据源较慢（单批次内部串联 MID/白平衡/ODF/料单多个上游接口），单独放宽超时，
+  // 避免多批次被全局 30s 超时掐断；后端另有 25s 预算兜底，正常会在预算内返回。
+  // 传入 signal 可真正终止请求（查询进行中点「终止」）。
+  wbQuery: (params: { batch?: string; bom?: string }, signal?: AbortSignal) =>
+    http
+      .get<WbQueryResponse>('/api/wb/query', { params, timeout: 120000, signal })
+      .then((r) => r.data),
   wbStatus: () => http.get<WbStatus>('/api/wb/status').then((r) => r.data),
 }
 

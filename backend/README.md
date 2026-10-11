@@ -78,22 +78,22 @@ sudo systemctl restart co
 安装 systemd 服务 `co.service` + 每日维护定时器 `co-maintenance.timer`（SQLite 备份 + 超期草稿清理）。
 如需 Nginx 托管前端（方案 B）：`deploy/nginx-changeover.conf`，并把 `.env` 的 `SERVE_FRONTEND=off`。
 
-### 2.3 开发态（前后端分离）
+### 2.3 开发态（前后端分离 · 双端 8001，推荐）
 
 ```bash
-# 后端
+# 终端 A：后端（读 .env，固定 8001 并 --reload）
 cd backend
-pip install -r requirements-dev.txt
-python -m app.seed
-uvicorn app.main:app --reload --port 8000
+pip install -r requirements-dev.txt        # 首次
+python -m app.seed                          # 首次
+python scripts/start_dual.py                # uvicorn --reload --port 8001
 
-# 前端
+# 终端 B：前端
 cd frontend
-npm install
-npm run dev          # http://localhost:5173
+npm install                                 # 首次
+npm run dev                                 # http://localhost:5173
 ```
 
-开发态由 Vite 代理 `/api` → `http://127.0.0.1:8000`（见 `frontend/vite.config.ts`，可用 `VITE_API_TARGET` 覆盖）。
+开发态由 Vite 代理 `/api` → `http://127.0.0.1:8001`（见 `frontend/.env.development` 的 `VITE_API_TARGET`；若需切回单端口 8000，把它改为 `http://127.0.0.1:8000` 即可）。
 
 ### 2.4 启动自检
 
@@ -112,7 +112,7 @@ python -m app.preflight --strict               # 有告警即失败
 
 | 变量 | 说明 |
 |---|---|
-| `APP_HOST` / `APP_PORT` | 服务绑定地址与端口，缺省 `0.0.0.0` / `8000`；Windows `start_backend.bat` 默认优先 `8001` 以支持前后端分离联调 |
+| `APP_HOST` / `APP_PORT` | 服务绑定地址与端口，缺省 `0.0.0.0` / `8000`；双端开发态用 `scripts/start_dual.py` 固定 `8001`，`start_backend.bat` 亦默认优先 `8001` |
 | `DB_PATH` | SQLite 文件路径，缺省 `backend/data/app.db` |
 | `JWT_SECRET` | 签发登录 token 的密钥（**必配**） |
 | `JWT_EXPIRE_HOURS` | token 有效期，缺省 12 |
@@ -126,6 +126,8 @@ python -m app.preflight --strict               # 有告警即失败
 | `WB_MAIL_PATH` / `WB_BY_BATCH_URL` / `WB_BY_BOM_URL` | WB 包路径或 HTTP 回退端点 |
 | `TIOT_URL` / `MID_API_URL` / `ODF_URL` / `MES_API_BASE` / `MES_DOMAIN` / `MES_REFERER` | wb_mail / MES 端点（按现场填写） |
 | `SEED_ADMIN_EMP_ID` / `SEED_ADMIN_NAME` / `SEED_ADMIN_PASSWORD` | 种子管理员（首次登录强制改密） |
+| `WB_QUERY_CONCURRENCY` / `WB_QUERY_BUDGET_SECONDS` | WB 多批次查询并发度 / 整体预算秒数（默认 `6` / `60`，须 < 前端 axios 超时 120s） |
+| `WB_FORCE_ENV_LOAD` | `1` 时强制重新拉取 T 盘端点文件（默认仅在缺失时拉取） |
 
 ---
 
@@ -181,6 +183,8 @@ python -m app.preflight --strict               # 有告警即失败
 | GET | `/api/wb/status` | 数据源可用性（前端提示用） |
 
 > `WB_SOURCE` 可选 `auto/mes/http/mock/off`：优先真实 `wb_mail.mes_api`，缺失则回退 HTTP 端点，都没有则 503「数据源未配置」。单批次失败逐条标注，不遮蔽其他。
+
+> **并发查询（v1.2）**：多批次 / 多 BOM 查询使用 `ThreadPoolExecutor` 并发（默认 `WB_QUERY_CONCURRENCY=6`），整体预算 `WB_QUERY_BUDGET_SECONDS=60`（须 < 前端 axios 超时 120s）；超预算条目标记 `ok=false` + 「查询超时」，避免拖到前端超时。关键字去重 + 逐条耗时日志。可用 `WB_FORCE_ENV_LOAD=1` 强制重新拉取 T 盘端点。
 
 ---
 

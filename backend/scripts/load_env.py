@@ -9,11 +9,7 @@ from pathlib import Path
 
 DEFAULTS = {
     "APP_HOST": "0.0.0.0",
-<<<<<<< HEAD
-    "APP_PORT": "8001",
-=======
     "APP_PORT": "8000",
->>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
     "PYTHONUNBUFFERED": "1",
     "PYTHONIOENCODING": "utf-8",
 }

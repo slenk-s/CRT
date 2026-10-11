@@ -89,11 +89,7 @@ onMounted(load)
 <template>
   <div class="page" v-loading="loading">
     <div class="head-title">
-<<<<<<< HEAD
-      <h2 class="title">统计</h2>
-=======
       <h2 class="title">条目统计</h2>
->>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
       <p class="hint">转产提交量与条目量趋势（仅管理员可见）。</p>
     </div>
 
@@ -282,8 +278,4 @@ onMounted(load)
 .line.item { stroke: #67c23a; }
 .pt { fill: #409eff; }
 .xlabel { font-size: 10.5px; fill: #909399; }
-<<<<<<< HEAD
 </style>
-=======
-</style>
->>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)

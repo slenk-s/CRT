@@ -1,12 +1,6 @@
 <script setup lang="ts">
-<<<<<<< HEAD
-import { reactive, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-=======
 import { onUnmounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
->>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
 import { useUserStore } from '@/stores/user'
 
 const user = useUserStore()
@@ -16,14 +10,6 @@ const route = useRoute()
 const form = reactive({ emp_id: '', password: '' })
 const loading = ref(false)
 const launching = ref(false)
-<<<<<<< HEAD
-
-async function submit() {
-  if (!form.emp_id.trim() || !form.password) {
-    ElMessage.warning('请输入工号与口令')
-    return
-  }
-=======
 const loginError = ref('')
 const loginErrorVisible = ref(false)
 let loginErrorTimer: ReturnType<typeof setTimeout> | undefined
@@ -71,7 +57,6 @@ async function submit() {
     return
   }
   loginError.value = ''
->>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
   loading.value = true
   try {
     await user.login(form.emp_id.trim(), form.password)
@@ -79,13 +64,8 @@ async function submit() {
     await new Promise((resolve) => setTimeout(resolve, 520))
     const redirect = (route.query.redirect as string) || '/changeover'
     router.replace(redirect)
-<<<<<<< HEAD
-  } catch {
-    // 错误提示由 axios 拦截器统一处理
-=======
   } catch (err) {
     showLoginError(errorMessage(err))
->>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
   } finally {
     loading.value = false
   }
@@ -136,8 +116,6 @@ async function submit() {
         </div>
       </div>
 
-<<<<<<< HEAD
-=======
       <div v-if="loginError" class="login-alert" :class="{ leaving: !loginErrorVisible }" role="alert" @click="closeLoginError">
         <div class="login-alert-card">
           <div class="login-alert-head">
@@ -148,7 +126,6 @@ async function submit() {
         </div>
       </div>
 
->>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
       <div class="login-footer">
         <span>PCC v1.0</span>
         <span>Secure Local Sign-in</span>
@@ -209,64 +186,6 @@ async function submit() {
   position: relative;
   border-radius: 28px;
   padding: 2px;
-<<<<<<< HEAD
-  background: conic-gradient(from 140deg, rgba(45, 212, 191, .95), rgba(64, 158, 255, 1), rgba(139, 92, 246, .98), rgba(34, 211, 238, .9), rgba(45, 212, 191, .95));
-  box-shadow: 0 34px 90px rgba(0, 0, 0, .48), 0 0 42px rgba(56, 189, 248, .18);
-}
-.login-card::before {
-  content: '';
-  position: absolute;
-  inset: 2px;
-  border-radius: 26px;
-  background:
-    linear-gradient(145deg, rgba(8, 18, 32, .96), rgba(13, 27, 48, .94)),
-    radial-gradient(circle at 22% 8%, rgba(56, 189, 248, .16), transparent 34%);
-  backdrop-filter: blur(22px);
-}
-.login-card::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 28px;
-  padding: 1px;
-  background: linear-gradient(135deg, rgba(255,255,255,.28), transparent 28%, rgba(255,255,255,.12) 58%, transparent 76%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-}
-.login-card-glow {
-  position: absolute;
-  left: 20%;
-  right: 20%;
-  bottom: -84px;
-  height: 160px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(56, 189, 248, .72) 0%, rgba(99, 102, 241, .42) 35%, transparent 70%);
-  filter: blur(42px);
-  opacity: .86;
-  animation: glow-breathe 3.6s ease-in-out infinite;
-  z-index: 0;
-}
-@keyframes glow-breathe {
-  0%, 100% { opacity: .45; transform: scale(.96); }
-  50% { opacity: .92; transform: scale(1.05); }
-}
-.login-content {
-  position: relative;
-  z-index: 1;
-  padding: 34px 28px 28px;
-}
-.login-head {
-  text-align: center;
-  margin-bottom: 24px;
-}
-.logo {
-  width: 66px;
-  height: 66px;
-  margin: 0 auto 14px;
-  border-radius: 22px;
-=======
   background: conic-gradient(from 140deg, rgba(45, 212, 191, .55), rgba(56, 189, 248, .25) 25%, rgba(139, 92, 246, .52) 55%, rgba(45, 212, 191, .38));
   box-shadow: 0 34px 80px rgba(0, 0, 0, .48), 0 0 0 1px rgba(255,255,255,.04);
 }
@@ -304,28 +223,11 @@ async function submit() {
   height: 62px;
   margin-bottom: 7px;
   border-radius: 20px;
->>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
   display: grid;
   place-items: center;
   color: white;
   font-size: 30px;
   font-weight: 900;
-<<<<<<< HEAD
-  background: linear-gradient(135deg, rgba(56, 189, 248, .95), rgba(139, 92, 246, .95));
-  box-shadow: 0 16px 32px rgba(30, 144, 255, .38), inset 0 1px 0 rgba(255,255,255,.36);
-  border: 1px solid rgba(255,255,255,.28);
-}
-.login-head h1 {
-  margin: 0 0 8px;
-  font-size: 24px;
-  line-height: 1.1;
-  letter-spacing: .3px;
-  color: white;
-}
-.login-head p {
-  margin: 0;
-  color: rgba(214, 232, 250, .72);
-=======
   background: linear-gradient(145deg, #06b6d4, #6366f1 55%, #8b5cf6);
   box-shadow: 0 12px 30px rgba(99, 102, 241, .42), inset 0 1px 0 rgba(255,255,255,.3);
 }
@@ -341,7 +243,6 @@ async function submit() {
 .login-head p {
   margin: 0;
   color: rgba(198, 224, 245, .68);
->>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
   font-size: 13px;
 }
 .login-form {
@@ -469,10 +370,6 @@ async function submit() {
   .login-head h1 { font-size: 21px; }
   .field-box, .login-btn { height: 48px; }
 }
-<<<<<<< HEAD
-</style>
-
-=======
 .login-alert {
   position: absolute;
   inset: -100px -22px auto -22px;
@@ -533,7 +430,6 @@ async function submit() {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 </style>
->>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
 
 <style scoped>
 .login-rise-veil {

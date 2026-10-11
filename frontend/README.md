@@ -33,23 +33,21 @@ frontend/
 │     └─ admin/{DictManageView,UserManageView}.vue
 ```
 
-## 开发
+## 开发（双端 8001）
 
 ```bash
+# 终端 A：后端（读 .env，固定 8001 并 --reload）
+cd ../backend
+python scripts/start_dual.py       # uvicorn --reload --port 8001
+
+# 终端 B：前端
 cd frontend
-npm install
-npm run dev          # http://localhost:5173
+npm install                        # 首次
+npm run dev                        # http://localhost:5173
 ```
 
-开发态由 Vite 代理 `/api` → `http://127.0.0.1:8000`（见 `vite.config.ts`，可用 `VITE_API_TARGET` 覆盖）。
-请先启动后端：
-
-```bash
-cd backend && uvicorn app.main:app --reload --port 8000
-```
-
-若使用后端 `scripts\start_backend.bat`，脚本默认优先使用 `8001`，可通过 `.env` 的 `APP_PORT=8000` 或前端 `VITE_API_TARGET=http://127.0.0.1:8001` 对齐端口。
-
+开发态由 Vite 代理 `/api` → `http://127.0.0.1:8001`（见 `.env.development` 的 `VITE_API_TARGET`）。
+如需切回单端口 8000：把 `.env.development` 的 `VITE_API_TARGET` 改成 `http://127.0.0.1:8000`，再用 `uvicorn --port 8000` 启动后端即可。
 ## 构建与部署
 
 ```bash

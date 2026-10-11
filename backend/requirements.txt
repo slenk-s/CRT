@@ -6,8 +6,5 @@ python-multipart>=0.0.9
 bcrypt>=4.1
 PyJWT>=2.8
 smbprotocol>=1.13
-<<<<<<< HEAD
-=======
 # wb_mail 料单/侧标/无线字段取数所需（WB 核心字段仅用标准库）
 requests>=2.31
->>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)

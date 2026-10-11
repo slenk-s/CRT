@@ -19,30 +19,26 @@ http.interceptors.response.use(
   (error) => {
     const status = error?.response?.status
     const detail = error?.response?.data?.detail
-<<<<<<< HEAD
     if (status === 401) {
       localStorage.removeItem(TOKEN_KEY)
       if (!location.pathname.startsWith('/login')) {
         ElMessage.warning('登录已过期，请重新登录')
         location.href = '/login'
       }
-=======
-    const url = error?.config?.url || ''
-    if (status === 401) {
-      localStorage.removeItem(TOKEN_KEY)
-      if (!location.pathname.startsWith('/login') && !url.includes('/api/auth/login')) {
-        ElMessage.warning('登录已过期，请重新登录')
-        location.href = '/login'
-      }
-    } else if (url.includes('/api/auth/login')) {
-      // 登录页使用与界面主题一致的本地弹层提示
->>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
     } else if (status === 403) {
       ElMessage.error(detail || '没有权限执行该操作')
     } else if (status === 503) {
       ElMessage.error(detail || '数据源/存储暂不可用，请稍后重试')
     } else if (status && status !== 404) {
       ElMessage.error(detail || `请求失败（${status}）`)
+    } else if (!status && error?.code !== 'ERR_CANCELED') {
+      // 无 HTTP status：请求超时 / 断网 / 网关不可达。
+      // 旧代码在此不做任何提示，导致多批次查询超时后“毫无反应、结果被静默清空”。
+      if (error?.code === 'ECONNABORTED' || error?.code === 'ETIMEDOUT') {
+        ElMessage.error('请求超时，请减少查询数量或稍后重试')
+      } else {
+        ElMessage.error('网络异常或服务未响应，请检查网络后重试')
+      }
     }
     return Promise.reject(error)
   },
@@ -67,8 +63,4 @@ export async function downloadFile(path: string, params: Record<string, unknown>
   URL.revokeObjectURL(url)
 }
 
-<<<<<<< HEAD
 export default http
-=======
-export default http
->>>>>>> 9d0a5a9 (初始化 PCC v1.1 项目)
