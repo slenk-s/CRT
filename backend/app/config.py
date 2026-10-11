@@ -1,4 +1,4 @@
-"""产线转产管理轻应用 · 后端配置（只读环境变量，不写死任何密钥/内网地址）。"""
+"""转产测试追溯 CRT · 后端配置（只读环境变量，不写死任何密钥/内网地址）。"""
 from __future__ import annotations
 
 import os
@@ -19,7 +19,7 @@ def _env_int(key: str, default: int) -> int:
 
 
 # ---- 应用 ----
-APP_NAME = "产线转产管理轻应用"
+APP_NAME = "转产测试追溯 CRT"
 APP_VERSION = "0.1.0"
 
 # ---- 服务绑定（部署用；Windows 局域网/服务器均可） ----

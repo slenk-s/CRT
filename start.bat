@@ -1,12 +1,12 @@
 @echo off
 setlocal EnableExtensions
-title PCC v1.1 Launcher
+title CRT v1.2 Launcher
 cd /d "%~dp0"
 
 :menu
 cls
 echo ============================================
-echo   PCC v1.1 Launcher
+echo   CRT v1.2 Launcher
 echo ============================================
 echo   [1] Dual-port mode
 echo       Backend : http://127.0.0.1:8001
@@ -31,21 +31,21 @@ if errorlevel 1 goto :menu
 echo Creating helper scripts...
 (
   echo @echo off
-  echo title PCC-backend-8001
+  echo title CRT-backend-8001
   echo cd /d "%~dp0backend"
   echo ".venv\Scripts\Python311.exe" scripts\start_dual.py
   echo pause
 ) > _run_be.bat
 (
   echo @echo off
-  echo title PCC-frontend-5173
+  echo title CRT-frontend-5173
   echo cd /d "%~dp0frontend"
   echo call npm run dev
   echo pause
 ) > _run_fe.bat
 
-start "PCC-backend-8001" cmd /k _run_be.bat
-start "PCC-frontend-5173" cmd /k _run_fe.bat
+start "CRT-backend-8001" cmd /k _run_be.bat
+start "CRT-frontend-5173" cmd /k _run_fe.bat
 echo Opening 2 windows. Cleaning helper scripts in 6s...
 timeout /t 6 /nobreak >nul
 del _run_be.bat _run_fe.bat 2>nul

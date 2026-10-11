@@ -1,13 +1,13 @@
 @echo off
 REM ===========================================================================
-REM  产线转产管理轻应用 · Windows 环境准备（一次性；可重复执行）
+REM  转产测试追溯 CRT · Windows 环境准备（一次性；可重复执行）
 REM
 REM  做四件事：① 建 venv 并装依赖 ② 生成 .env（含随机 JWT_SECRET）
 REM            ③ 建库+灌种子 ④ 启动自检，并提示防火墙放行
 REM ===========================================================================
 setlocal enabledelayedexpansion
 cd /d "%~dp0.."
-echo ==== 产线转产管理轻应用 · Windows 环境准备 ====
+echo ==== 转产测试追溯 CRT · Windows 环境准备 ====
 
 REM ---- 1. Python ----
 where python >nul 2>&1

@@ -1,4 +1,4 @@
-# 产线转产管理轻应用 · 前端
+# 转产测试追溯 CRT · 前端
 
 Vue 3 + Vite + TypeScript + Element Plus + Pinia + Vue Router。
 移动优先设计，桌面端与移动端共享同一套业务视图，并通过响应式布局统一体验。

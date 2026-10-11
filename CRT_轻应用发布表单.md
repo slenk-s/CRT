@@ -132,6 +132,6 @@ CRT 面向 PE 部测试机架组，将「转产过程的证据」从散落的纸
 ## 📎 备注
 
 - **项目代号**：PCC（原名）→ CRT（对外发布名）
-- **代码仓库**：https://github.com/slenk-s/PCC
+- **代码仓库**：https://github.com/slenk-s/CRT
 - **当前版本**：v1.2（对齐修复合并包）
 - **压缩包**：`PCC_v1.1.zip`（仓库当前 tag，与业务代号 PCC 历史沿用）

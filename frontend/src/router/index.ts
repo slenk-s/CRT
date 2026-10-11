@@ -88,8 +88,8 @@ router.beforeEach(async (to) => {
 
 router.afterEach((to) => {
   document.title = to.meta.title
-    ? `${to.meta.title as string} · 产线转产管理`
-    : '产线转产管理'
+    ? `${to.meta.title as string} · 转产测试追溯 CRT`
+    : '转产测试追溯 CRT'
 })
 
 export default router

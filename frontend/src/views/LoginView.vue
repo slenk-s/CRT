@@ -84,7 +84,7 @@ async function submit() {
         <div class="login-content">
           <div class="login-head">
             <div class="logo">转</div>
-            <h1>产线转产管理</h1>
+            <h1>转产测试追溯 CRT</h1>
             <p>惠州 TV 工厂 · 转产记录 / WB 参数查询</p>
           </div>
 
@@ -127,7 +127,7 @@ async function submit() {
       </div>
 
       <div class="login-footer">
-        <span>PCC v1.0</span>
+        <span>CRT v1.2</span>
         <span>Secure Local Sign-in</span>
       </div>
       <div class="login-rise-veil" :class="{ active: launching }"></div>

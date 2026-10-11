@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# 产线转产管理轻应用 · Linux 一键部署（内网服务器正式态）
+# 转产测试追溯 CRT · Linux 一键部署（内网服务器正式态）
 #
 #   用法： sudo bash scripts/deploy_linux.sh [--dir /opt/changeover] [--user changeover]
 #

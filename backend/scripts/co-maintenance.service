@@ -1,5 +1,5 @@
 [Unit]
-Description=产线转场管理轻应用 · 夜间维护（SQLite 备份 + 超期草稿清理）
+Description=转产测试追溯 CRT · 夜间维护（SQLite 备份 + 超期草稿清理）
 
 [Service]
 Type=oneshot

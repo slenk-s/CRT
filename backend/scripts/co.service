@@ -1,5 +1,5 @@
 [Unit]
-Description=产线转场管理轻应用 (FastAPI/uvicorn · single-port API+SPA)
+Description=转产测试追溯 CRT (FastAPI/uvicorn · single-port API+SPA)
 After=network-online.target
 Wants=network-online.target
 

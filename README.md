@@ -1,12 +1,12 @@
-# 产线转产管理轻应用 (PCC v1.2)
+# 转产测试追溯 CRT v1.2
 
 TCL 惠州 TV 工厂 PE 部 · 产线转产（Changeover）拍照记录与追溯系统。
 
 轻量浏览器应用：**转产建档 → 逐工位录入检查项 + 拍照 → 统一提交归档 → 按日期 / 线体 / 批次 / 工位追溯**。
 
-- 版本：**v1.2**（已对齐《PCC v1.2 修复合并包》）
+- 版本：**v1.2**（已对齐《CRT v1.2 修复合并包》）
 - 架构：FastAPI + SQLAlchemy + SQLite（后端） · Vue 3 + Vite + Pinia + Tailwind（前端）
-- 仓库：https://github.com/slenk-s/PCC
+- 仓库：https://github.com/slenk-s/CRT
 
 ---
 
@@ -61,7 +61,7 @@ TCL 惠州 TV 工厂 PE 部 · 产线转产（Changeover）拍照记录与追溯
 ## 项目结构
 
 ```
-PCC_v1.1/
+CRT/
 ├── start.bat                  # 一键启动脚本（双端 / 单端口可选）
 ├── README.md                  # 本文件
 ├── .gitignore
@@ -157,7 +157,7 @@ npm install
 双击根目录 `start.bat`，或在终端执行：
 
 ```powershell
-cd C:\path\to\PCC_v1.1
+cd C:\path\to\CRT
 cmd /c start.bat
 ```
 
@@ -165,7 +165,7 @@ cmd /c start.bat
 
 ```
 ============================================
-  PCC v1.1 Launcher
+  CRT v1.2 Launcher
 ============================================
   [1] Dual-port mode
       Backend : http://127.0.0.1:8001
@@ -244,7 +244,7 @@ Nginx 反代示例：
 ```nginx
 server {
     listen 80;
-    server_name pcc.local;
+    server_name crt.local;
     client_max_body_size 50M;
 
     location /api/ {
@@ -372,7 +372,7 @@ scripts\install_autostart_windows.bat   # 注册开机自启
 
 ## v1.2 变更记录
 
-对齐《PCC v1.2 修复合并包》：
+对齐《CRT v1.2 修复合并包》：
 
 ### 后端
 - **`app/routers/wb.py`**：多批次查询改为并发（`ThreadPoolExecutor`，并发度 `WB_QUERY_CONCURRENCY=6`，整体预算 `WB_QUERY_BUDGET_SECONDS=60`）。关键字去重 + 逐条耗时日志 + 超时条目标记 `ok=false`，避免拖到前端超时。

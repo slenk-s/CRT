@@ -128,7 +128,7 @@ def _check_frontend() -> list[tuple[str, str, str]]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="产线转产管理轻应用 · 启动自检")
+    ap = argparse.ArgumentParser(description="转产测试追溯 CRT · 启动自检")
     ap.add_argument("--json", action="store_true", help="输出 JSON")
     ap.add_argument("--strict", action="store_true", help="有告警即返回失败码")
     args = ap.parse_args(argv)

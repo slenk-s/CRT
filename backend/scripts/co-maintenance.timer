@@ -1,5 +1,5 @@
 [Unit]
-Description=产线转场管理轻应用 · 每日维护定时器（03:30）
+Description=转产测试追溯 CRT · 每日维护定时器（03:30）
 
 [Timer]
 OnCalendar=*-*-* 03:30:00
