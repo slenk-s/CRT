@@ -18,6 +18,18 @@ export interface DictLinesResponse { items: DictLine[]; by_workshop: Record<stri
 export interface DictStation { id: number; station: string; sort: number }
 export interface CheckItem { id: number; station: string; item: string; sort: number }
 
+export interface ItemPhotoOut {
+  seq: number
+  rel_path: string
+  name: string
+  size: number
+  synced: number          // 0=本地待同步, 1=SMB
+  uploader_emp_id: string
+  uploader_name: string
+  created_at: string
+  url: string | null
+}
+
 export interface ItemOut {
   id: number
   station: string
@@ -31,6 +43,8 @@ export interface ItemOut {
   draft_updated_at: string | null
   updated_at: string
   photo_url: string | null
+  draft_photos: ItemPhotoOut[]
+  has_photo_pending_sync: boolean
 }
 
 export interface ChangeoverOut {

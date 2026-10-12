@@ -42,6 +42,10 @@ SMB_USER = _env("SMB_USER", "")       # 可空=匿名（不建议生产）
 SMB_PASSWORD = _env("SMB_PASSWORD", "")
 SMB_DOMAIN = _env("SMB_DOMAIN", "")   # 可选；会拼成 DOMAIN\user
 
+# ---- 本地照片临时目录（SMB 不可用时的降级）----
+LOCAL_PHOTO_DIR = _env("LOCAL_PHOTO_DIR", str(BASE_DIR / "data" / "local_photos"))
+LOCAL_PHOTO_SYNC_INTERVAL = _env_int("LOCAL_PHOTO_SYNC_INTERVAL", 30)  # 秒
+
 # ---- 上传限制 ----
 MAX_IMAGE_MB = _env_int("MAX_IMAGE_MB", 10)
 MAX_IMAGE_EDGE = _env_int("MAX_IMAGE_EDGE", 1920)   # 客户端压缩长边上限（服务端兜底校验）

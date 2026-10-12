@@ -25,6 +25,7 @@ from __future__ import annotations
 import datetime as _dt
 import os
 import re
+import shutil
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
@@ -32,6 +33,12 @@ try:
     import smbclient  # 来自 smbprotocol
 except ImportError:  # pragma: no cover
     smbclient = None
+
+def photo_display_name(batch: str, station: str, seq: int, ext: str) -> str:
+    """统一命名：`{批次}_{工位}_{序号}.{ext}`（清理非法字符后拼接）。"""
+    return "%s_%s_%d.%s" % (
+        sanitize_segment(batch), sanitize_segment(station), int(seq), ext.lower()
+    )
 
 _ILLEGAL = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
@@ -212,6 +219,93 @@ class SmbStorage:
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "root": self.root_unc(), "message": str(e)}
 
+
+class LocalStorage:
+    """本地临时照片目录（SMB 不可用时的降级）。
+
+    目录结构刻意与 SmbStorage 的共享内相对路径保持一致，
+    这样后台同步时可直接按 rel_path 搬运。
+    """
+
+    def __init__(self, root: str) -> None:
+        self.root = str(root)
+        try:
+            os.makedirs(self.root, exist_ok=True)
+        except OSError as e:
+            raise StorageError("本地临时目录不可用: %s" % e) from e
+
+    @staticmethod
+    def _norm(p: str) -> str:
+        p = (p or "").replace("/", os.sep)
+        p = p.lstrip(os.sep)
+        return os.path.normpath(p)
+
+    def _abs(self, rel: str) -> str:
+        rel = self._norm(rel)
+        return os.path.join(self.root, rel)
+
+    def rel(self, *parts: str) -> str:
+        """按 rel_path 拼本地相对路径（不使用 SMB_ROOT 概念）。"""
+        segs = []
+        for p in parts:
+            p = self._norm(p)
+            if p:
+                segs.append(p)
+        return os.path.join(*segs)
+
+    def write_bytes(self, rel: str, data: bytes) -> int:
+        path = self._abs(rel)
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as f:
+                f.write(data)
+        except OSError as e:
+            raise StorageError("本地写失败(%s): %s" % (rel, e)) from e
+        return len(data)
+
+    def read_bytes(self, rel: str) -> bytes:
+        path = self._abs(rel)
+        try:
+            with open(path, "rb") as f:
+                return f.read()
+        except OSError as e:
+            raise StorageError("本地读失败(%s): %s" % (rel, e)) from e
+
+    @contextmanager
+    def open_stream(self, rel: str) -> Iterator[object]:
+        path = self._abs(rel)
+        try:
+            with open(path, "rb") as f:
+                yield f
+        except OSError as e:
+            raise StorageError("本地打开失败(%s): %s" % (rel, e)) from e
+
+    def exists(self, rel: str) -> bool:
+        return os.path.isfile(self._abs(rel))
+
+    def remove(self, rel: str) -> None:
+        path = self._abs(rel)
+        if os.path.isfile(path):
+            try:
+                os.remove(path)
+            except OSError as e:
+                raise StorageError("本地删除失败(%s): %s" % (rel, e)) from e
+
+    def move(self, src_rel: str, dst_rel: str) -> None:
+        src, dst = self._abs(src_rel), self._abs(dst_rel)
+        try:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            if os.path.exists(dst):
+                os.remove(dst)
+            shutil.move(src, dst)
+        except OSError as e:
+            raise StorageError("本地移动失败(%s → %s): %s" % (src_rel, dst_rel, e)) from e
+
+    def now_ts(self) -> str:
+        return _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    def root_abs(self) -> str:
+        return os.path.abspath(self.root)
 
 # ---------------------------------------------------------------------------
 # 自检

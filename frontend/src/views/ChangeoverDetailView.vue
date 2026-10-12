@@ -230,13 +230,15 @@ onMounted(async () => {
           </el-tag>
         </h4>
 
-        <div class="thumbs">
-          <AuthImage
-            v-if="it.photo_url"
-            :key="`${it.current_ver}-${it.updated_at}`"
-            :path="it.photo_url"
-            :on-preview="(u) => (previewUrl = u)"
-          />
+        <div class="thumbs-grid">
+          <template v-if="it.draft_photos?.length">
+            <AuthImage
+              v-for="ph in it.draft_photos"
+              :key="`${it.current_ver}-${ph.seq}`"
+              :path="ph.url"
+              :on-preview="(u) => (previewUrl = u)"
+            />
+          </template>
           <div v-else class="thumb-ph">未拍照</div>
         </div>
 
@@ -373,6 +375,8 @@ onMounted(async () => {
 .checks-view { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .chk-tag { max-width: 100%; }
 .remark { margin-top: 8px; font-size: 13px; color: var(--text2); background: #fafcff; border-left: 3px solid #d9ecff; padding: 6px 10px; border-radius: 0 6px 6px 0; }
+.thumbs-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.thumbs-grid .thumb { width: 80px; height: 80px; object-fit: cover; border-radius: 4px; }
 .item-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
 .version-body { max-height: min(62vh, 540px); overflow-y: auto; padding-right: 4px; }
 .version-timeline { padding-left: 2px; }

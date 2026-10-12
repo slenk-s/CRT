@@ -21,6 +21,7 @@ from . import config, seed
 from .db import init_db
 from .routers import admin, auth, changeover, dicts, reports, wb
 from .services.storage import SmbStorage
+from .services.sync import start_sync_service, stop_sync_service
 
 
 def _storage_status() -> dict[str, Any]:
@@ -59,7 +60,15 @@ async def lifespan(app: FastAPI):
     app.state.frontend_dir = str(fe) if fe else None
     print("[前端]", f"托管 {fe}" if fe else "未托管（仅 API）")
     print(f"[服务] http://0.0.0.0:{config.APP_PORT}/  （单端口：API + 前端）")
-    yield
+    if config.SMB_HOST and config.SMB_SHARE:
+        start_sync_service()
+        print("[同步] 后台线程已启动（本地照片 -> SMB）")
+    else:
+        print("[同步] SMB 未配置，跳过后台同步服务")
+    try:
+        yield
+    finally:
+        stop_sync_service()
 
 
 app = FastAPI(title=config.APP_NAME, version=config.APP_VERSION, lifespan=lifespan)

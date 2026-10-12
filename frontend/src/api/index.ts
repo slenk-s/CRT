@@ -68,6 +68,10 @@ export const api = {
       })
       .then((r) => r.data)
   },
+  itemDeletePhoto: (itemId: number, seq: number) =>
+    http.delete<{ ok: boolean; removed: boolean; error: string }>(
+      `/api/changeover/items/${itemId}/photos/${seq}`
+    ).then((r) => r.data),
   itemVersions: (itemId: number) =>
     http.get<VersionOut[]>(`/api/changeover/items/${itemId}/versions`).then((r) => r.data),
 

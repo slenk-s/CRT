@@ -77,6 +77,32 @@ class CoItem(Base):
     updated_at: Mapped[str] = mapped_column(String(32), default=_now, onupdate=_now)
 
 
+class CoItemPhoto(Base):
+    """条目照片（草稿 + 正式版统一表；按 seq 排序）。
+
+    - 上传一张 = 一行；`seq` 在同一条目内从 1 递增
+    - `synced=1` 表示文件在 SMB（`rel_path` 为 SMB 相对路径）
+    - `synced=0` 表示文件仅在本地临时目录（SMB 离线降级），待后台同步
+    - 文件名格式：`{批次}_{工位}_{序号}.{ext}`
+    """
+    __tablename__ = "co_item_photo"
+    __table_args__ = (
+        UniqueConstraint("item_id", "seq", name="uk_photo_item_seq"),
+        Index("idx_photo_item", "item_id"),
+        Index("idx_photo_synced", "synced"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("co_item.id"))
+    seq: Mapped[int] = mapped_column(Integer)                       # 1-based
+    rel_path: Mapped[str] = mapped_column(String(512))              # 相对路径
+    name: Mapped[str] = mapped_column(String(255))                  # 批次_工位_序号.ext
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    synced: Mapped[int] = mapped_column(Integer, default=1)         # 1=SMB, 0=本地待同步
+    uploader_emp_id: Mapped[str] = mapped_column(String(32), default="")
+    uploader_name: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[str] = mapped_column(String(32), default=_now)
+
+
 class CoItemVersion(Base):
     """工位条目版本（每次修改/重传新增一版，旧版保留）。"""
     __tablename__ = "co_item_version"

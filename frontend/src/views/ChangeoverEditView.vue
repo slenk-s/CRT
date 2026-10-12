@@ -143,20 +143,35 @@ async function saveStation(station: string) {
 
 async function onPickPhoto(station: string, ev: Event) {
   const input = ev.target as HTMLInputElement
-  const file = input.files?.[0]
+  const files = input.files
   input.value = ''
-  if (!file) return
+  if (!files || !files.length) return
   const it = itemByStation.value[station]
   if (!it) return
   uploading.value = true
   try {
-    const small = await compressImage(file)
-    const updated = await api.itemUploadPhoto(it.id, small)
-    Object.assign(it, updated)
-    syncDraft(updated)
-    ElMessage.success(`照片已保存（${fmtSize(updated.draft_size)}）`)
+    for (const file of Array.from(files)) {
+      const small = await compressImage(file)
+      const updated = await api.itemUploadPhoto(it.id, small)
+      Object.assign(it, updated)
+    }
+    syncDraft(it)
+    ElMessage.success(`已上传 ${files.length} 张照片`)
   } finally {
     uploading.value = false
+  }
+}
+
+async function onDeletePhoto(it: ItemOut, seq: number) {
+  try {
+    await ElMessageBox.confirm('确认删除这张照片？', '删除照片', { type: 'warning' })
+  } catch { return }
+  const r = await api.itemDeletePhoto(it.id, seq)
+  if (r.ok) {
+    ElMessage.success('已删除')
+    await loadDetail()
+  } else {
+    ElMessage.error(r.error || '删除失败')
   }
 }
 
@@ -385,13 +400,21 @@ onMounted(async () => {
                 style="margin-top: 8px"
               />
 
-              <div class="thumbs">
-                <AuthImage
-                  v-if="itemByStation[s.station]?.photo_url"
-                  :key="itemByStation[s.station]?.draft_updated_at || ''"
-                  :path="itemByStation[s.station]?.photo_url || null"
-                  :on-preview="(u) => (previewUrl = u)"
-                />
+              <div class="thumbs-grid">
+                <template v-if="itemByStation[s.station]?.draft_photos?.length">
+                  <div v-for="ph in itemByStation[s.station]!.draft_photos" :key="ph.seq" class="thumb-cell">
+                    <AuthImage
+                      :path="ph.url"
+                      :on-preview="(u) => (previewUrl = u)"
+                    />
+                    <div v-if="ph.synced === 0" class="sync-badge">待同步</div>
+                    <button class="del-btn" @click="onDeletePhoto(itemByStation[s.station]!, ph.seq)" title="删除">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>
+                      </svg>
+                    </button>
+                  </div>
+                </template>
                 <div v-else class="thumb-ph">未拍照</div>
               </div>
 
@@ -403,6 +426,7 @@ onMounted(async () => {
                     type="file"
                     accept="image/*"
                     capture="environment"
+                    multiple
                     @change="(e) => onPickPhoto(s.station, e)"
                   />
                 </label>
@@ -442,6 +466,12 @@ onMounted(async () => {
 <style scoped>
 .row-right { display: flex; gap: 8px; align-items: center; }
 .sub-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
+.thumbs-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.thumb-cell { position: relative; width: 80px; height: 80px; }
+.thumb-cell .thumb { width: 80px; height: 80px; object-fit: cover; border-radius: 4px; }
+.thumb-cell .sync-badge { position: absolute; bottom: 2px; left: 2px; background: #e6a23c; color: #fff; font-size: 10px; padding: 1px 4px; border-radius: 3px; }
+.thumb-cell .del-btn { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; border-radius: 50%; background: rgba(0,0,0,0.6); border: none; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.thumb-cell .del-btn svg { width: 12px; height: 12px; }
 .commit-row { display: flex; gap: 8px; margin-top: 8px; }
 .preview { width: 100%; border-radius: 8px; }
 /* 用 label 包隐藏 input，点击即唤起系统相机/相册，行为最稳定 */

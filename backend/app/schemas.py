@@ -91,6 +91,19 @@ class ItemCorrect(BaseModel):
     edit_note: str = Field("", description="更正说明")
 
 
+class ItemPhotoOut(BaseModel):
+    """条目下的一张照片（草稿或正式版通用）。"""
+    seq: int
+    rel_path: str = ""
+    name: str = ""
+    size: int = 0
+    synced: int = 1          # 0=本地待同步, 1=SMB
+    uploader_emp_id: str = ""
+    uploader_name: str = ""
+    created_at: str = ""
+    url: str | None = None   # /api/changeover/items/{id}/photos/{seq}
+
+
 class ItemOut(BaseModel):
     id: int
     station: str
@@ -103,7 +116,9 @@ class ItemOut(BaseModel):
     draft_size: int = 0
     draft_updated_at: str | None = None
     updated_at: str
-    photo_url: str | None = None
+    photo_url: str | None = None          # 兼容旧前端的第一张照片链接
+    draft_photos: list[ItemPhotoOut] = []     # 全量照片（含待同步标记）
+    has_photo_pending_sync: bool = False      # 是否有照片尚在本地待同步
 
 
 class ChangeoverOut(BaseModel):
