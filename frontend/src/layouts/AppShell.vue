@@ -271,7 +271,10 @@ async function doLogout() {
   animation: overlay-fade .22s ease-out;
 }
 
-.nav-backdrop { position: static; }
+/* 铺满整个浮层，作为「点击空白处关闭」的落点。
+   面板是 position:relative + z-index:1，仍在其上方，点面板不会触发关闭。
+   原先写成 static，等于一个零尺寸空 div，关闭逻辑根本点不到。 */
+.nav-backdrop { position: absolute; inset: 0; }
 
 /* 用户菜单从右上角滑出（触发器在标题栏右侧） */
 .nav-overlay--user { justify-content: flex-end; padding: 74px 24px 0 0; }
