@@ -60,8 +60,6 @@ export const api = {
     http.patch<ItemOut>(`/api/changeover/items/${itemId}`, body).then((r) => r.data),
   itemCorrect: (itemId: number, body: { check_result?: string; remark?: string; edit_note: string }) =>
     http.put<ItemOut>(`/api/changeover/items/${itemId}`, body).then((r) => r.data),
-  itemDelete: (itemId: number) =>
-    http.delete<{ ok: boolean }>(`/api/changeover/items/${itemId}`).then((r) => r.data),
   itemUploadPhoto: (itemId: number, file: File) => {
     const fd = new FormData()
     fd.append('file', file)

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { api, fmtDateTime, fmtSize, statusText } from '@/api'
 import type { ChangeoverDetail, CheckItem, ItemOut, VersionOut } from '@/api/types'
 import AuthImage from '@/components/AuthImage.vue'
@@ -140,23 +140,6 @@ async function onReplacePhoto(it: ItemOut, ev: Event) {
   }
 }
 
-async function removeItem(it: ItemOut) {
-  try {
-    await ElMessageBox.confirm(
-      isSubmitted.value
-        ? `确认移除「${it.station}」条目？已提交记录为软删除，正式文件与版本历史仍保留。`
-        : `确认移除「${it.station}」条目及其草稿照片？`,
-      '移除条目',
-      { type: 'warning' },
-    )
-  } catch {
-    return
-  }
-  await api.itemDelete(it.id)
-  ElMessage.success('已移除')
-  await load()
-}
-
 // ---------------- 版本历史 ----------------
 const verVisible = ref(false)
 const verLoading = ref(false)
@@ -284,8 +267,6 @@ onMounted(async () => {
           <el-button size="small" @click="openVersions(it)">
             <el-icon><Clock /></el-icon>版本历史
           </el-button>
-          <!-- 草稿中的工位不可移除（草稿请回录入页删整份草稿）；已提交记录为软删 -->
-          <el-button v-if="isSubmitted" size="small" type="danger" plain @click="removeItem(it)">移除</el-button>
         </div>
       </div>
     </div>
