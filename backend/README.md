@@ -148,7 +148,7 @@ python -m app.preflight --strict               # 有告警即失败
 | GET | `/api/changeover/{id}` | 详情（含工位条目） |
 | PATCH | `/api/changeover/{id}` | 修改草稿批次/备注 |
 | DELETE | `/api/changeover/{id}` | 删除草稿会话（物理清草稿文件）；已提交会话返回 409 |
-| GET | `/api/changeover/export.csv` | CSV 导出（UTF-8 BOM） |
+| GET | `/api/changeover/export.csv` | CSV 导出（UTF-8 BOM，按工位条目一行，台账列见下） |
 | POST | `/api/changeover/{id}/items` | 添加工位条目 |
 | PATCH | `/api/changeover/items/{item_id}` | 更新草稿勾选结果/备注 |
 | PUT | `/api/changeover/items/{item_id}` | 已提交条目纠错（生成新版本） |
@@ -160,6 +160,20 @@ python -m app.preflight --strict               # 有告警即失败
 | GET | `/api/changeover/items/{item_id}/photos/{seq}` | 按序号取图（流式转发，本地降级照片同样可读） |
 | GET | `/api/changeover/items/{item_id}/photo?ver=` | 图片代理（草稿优先/指定版本，流式转发） |
 | GET | `/api/changeover/items/{item_id}/versions` | 版本历史（倒序） |
+
+**CSV 导出列**（按工位条目一行，草稿与已提交同表，用「状态」区分）：
+
+```text
+日期 | 车间 | 线体 | 批次 | 工位 | 状态 | 版本 | 检查项 | 备注 | 照片数 | 文件名 | 上传人工号 | 上传人 | 提交时间
+```
+
+- 「检查项」只列**已勾选**项，顿号分隔（不写裸 JSON）；未勾选不出现
+- 一个工位多张照片合并到「文件名」一格，按 seq 升序、分号分隔，另给「照片数」
+- 不导出共享盘内部路径：按「日期/线体/批次/工位」四列即可定位到目录
+- 「版本」草稿留空；「提交时间」取会话提交时刻，草稿留空
+- 「上传人」取**会话创建人**（不是最后的修改人；改版/替换者见审计日志）
+- 行按**批次号**排序分组，批次之间留一个空行——CSV 是纯文本上不了色，用留白代替色阶分组。
+  分组键只取批次号本身（不掺日期/线体），所以同一批次号出现在不同日期/线体时也会并到一组
 
 ### 管理端（仅 admin）
 | 方法 | 路径 | 说明 |

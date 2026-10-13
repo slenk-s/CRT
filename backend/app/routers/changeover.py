@@ -436,6 +436,22 @@ def list_changeovers(
     )
 
 
+def _fmt_checks(raw: str) -> str:
+    """勾选结果 JSON → 「光感、白平衡」（只列已勾选项；空 / 非 JSON 原样返回）。"""
+    try:
+        data = _json.loads(raw or "{}")
+    except ValueError:
+        return raw or ""
+    if not isinstance(data, dict):
+        return raw or ""
+    return "、".join(k for k, v in data.items() if v)
+
+
+def _photo_names(photos: list[CoItemPhoto]) -> str:
+    """一个工位的多张照片合并到一格：按 seq 升序、分号分隔。"""
+    return "; ".join(p.name for p in photos if p.name)
+
+
 @router.get("/export.csv")
 def export_changeovers_csv(
     status_: str | None = Query(None, alias="status"),
@@ -447,7 +463,16 @@ def export_changeovers_csv(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """导出 CSV（阶段 5）：筛选条件同列表，**按工位条目（最新版）一行**，UTF-8 BOM。"""
+    """导出 CSV（阶段 5）：筛选条件同列表，**按工位条目一行**，UTF-8 BOM。
+
+    列为现场台账/存档设计：人看得懂、值短、无内部细节。
+    - 勾选结果展平为已勾选项（顿号分隔），不写裸 JSON
+    - 多张照片合并到「文件名」一格（分号分隔），另给「照片数」
+    - 状态与版本号分列，不再混装
+    - 只写文件名，不写共享盘内部路径（按日期/线体/批次/工位四列即可定位）
+    - 上传人取会话创建人；提交时间取会话提交时刻（草稿行留空）
+    - 行按**批次号**排序分组，批次之间留一个空行（CSV 上不了色，用留白代替色阶）
+    """
     q = db.query(Changeover)
     if status_:
         q = q.filter(Changeover.status == status_)
@@ -472,30 +497,55 @@ def export_changeovers_csv(
     for it in items:
         by_co.setdefault(it.changeover_id, []).append(it)
 
+    # 照片一律从 co_item_photo 取：草稿态没有别的来源
+    # （CoItem.draft_name / draft_rel_path 从建表起就没被写过，读它永远是空）
+    photos_by_item: dict[int, list[CoItemPhoto]] = {}
+    item_ids = [i.id for i in items]
+    if item_ids:
+        for p in (db.query(CoItemPhoto)
+                    .filter(CoItemPhoto.item_id.in_(item_ids))
+                    .order_by(CoItemPhoto.item_id, CoItemPhoto.seq)
+                    .all()):
+            photos_by_item.setdefault(p.item_id, []).append(p)
+
     buf = io.StringIO()
     buf.write("\ufeff")   # UTF-8 BOM：Excel 打开中文不乱码
     w = csv.writer(buf)
-    w.writerow(["日期", "车间", "线体", "批次", "工位", "版本", "勾选结果", "备注",
-                "文件名", "路径", "上传人工号", "上传人", "上传时间"])
+    w.writerow(["日期", "车间", "线体", "批次", "工位", "状态", "版本", "检查项", "备注",
+                "照片数", "文件名", "上传人工号", "上传人", "提交时间"])
+
+    # 先攒齐再排序：CSV 是纯文本、上不了色，只能把同批次聚在一起、批次之间留空行，
+    # 用留白代替色阶做视觉分组。分组键只取批次号（不掺日期/线体），同号即同组。
+    # 组内按 日期 → 线体 → 条目创建顺序 排，保证同一批次内的先后稳定可预期。
+    staged: list[tuple[str, str, str, int, list]] = []
     for co in cos:
         for it in sorted(by_co.get(co.id, []), key=lambda x: x.id):
+            photos = photos_by_item.get(it.id, [])
             if co.status == "submitted":
                 v = latest.get(it.id)
                 row = [co.shot_date, co.workshop, co.line, co.batch, it.station,
+                       "已提交",
                        f"v{it.current_ver}" if v else "",
-                       (v.check_result if v else "") or "",
+                       _fmt_checks((v.check_result if v else "") or ""),
                        (v.remark if v else "") or "",
-                       (v.photo_name if v else "") or "",
-                       (v.photo_rel_path if v else "") or "",
-                       (v.uploader_emp_id if v else co.uploader_emp_id),
-                       (v.uploader_name if v else co.uploader_name),
-                       (v.created_at if v else "") or ""]
+                       len(photos), _photo_names(photos),
+                       co.uploader_emp_id, co.uploader_name, co.submitted_at or ""]
             else:
-                row = [co.shot_date, co.workshop, co.line, co.batch, it.station, "草稿",
-                       it.draft_check_result or "", it.draft_remark or "",
-                       it.draft_name or "", it.draft_rel_path or "",
-                       co.uploader_emp_id, co.uploader_name, it.draft_updated_at or ""]
-            w.writerow(row)
+                row = [co.shot_date, co.workshop, co.line, co.batch, it.station,
+                       "草稿", "",
+                       _fmt_checks(it.draft_check_result or ""),
+                       it.draft_remark or "",
+                       len(photos), _photo_names(photos),
+                       co.uploader_emp_id, co.uploader_name, ""]
+            staged.append((co.batch, co.shot_date, co.line, it.id, row))
+
+    staged.sort(key=lambda t: (t[0], t[1], t[2], t[3]))
+    prev_batch: str | None = None
+    for batch, _date, _line, _item_id, row in staged:
+        if prev_batch is not None and batch != prev_batch:
+            w.writerow([])      # 批次之间的空行
+        w.writerow(row)
+        prev_batch = batch
 
     data = buf.getvalue().encode("utf-8")
     fname = quote(f"转产记录导出_{_today()}.csv")
