@@ -67,6 +67,14 @@ export const api = {
       .post<ItemOut>(`/api/changeover/items/${itemId}/photo`, fd)
       .then((r) => r.data)
   },
+  /** 替换指定序号的单张照片（已提交态会生成新版本、保留旧文件） */
+  itemReplacePhoto: (itemId: number, seq: number, file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return http
+      .put<ItemOut>(`/api/changeover/items/${itemId}/photos/${seq}`, fd)
+      .then((r) => r.data)
+  },
   itemDeletePhoto: (itemId: number, seq: number) =>
     http.delete<{ ok: boolean; removed: boolean; error: string }>(
       `/api/changeover/items/${itemId}/photos/${seq}`

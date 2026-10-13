@@ -307,13 +307,23 @@ scripts\install_autostart_windows.bat   # 注册开机自启
 ### 转产
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/changeover` | 列表（日期 / 线体 / 批次筛选） |
+| GET | `/api/changeover` | 列表（日期区间 / 线体 / 批次 / 状态 / 仅看我的） |
 | POST | `/api/changeover` | 新建草稿 |
 | GET | `/api/changeover/{id}` | 详情 |
-| PUT | `/api/changeover/{id}` | 更新草稿 |
-| POST | `/api/changeover/{id}/submit` | 提交归档（生成新版本） |
-| GET | `/api/changeover/{id}/versions` | 版本历史 |
-| DELETE | `/api/changeover/{id}` | 软删 |
+| PATCH | `/api/changeover/{id}` | 更新草稿批次 / 备注 |
+| DELETE | `/api/changeover/{id}` | 删除草稿（连草稿照片一起清）；已提交返回 409 |
+| GET | `/api/changeover/export.csv` | CSV 导出（UTF-8 BOM） |
+| POST | `/api/changeover/{id}/items` | 添加工位条目 |
+| PATCH | `/api/changeover/items/{item_id}` | 改草稿勾选结果 / 备注 |
+| PUT | `/api/changeover/items/{item_id}` | 已提交条目纠错（生成新版本） |
+| DELETE | `/api/changeover/items/{item_id}` | 删条目（草稿清文件；已提交软删留历史） |
+| POST | `/api/changeover/{id}/submit` | 统一提交归档（生成 v1） |
+| POST | `/api/changeover/items/{item_id}/photo` | **追加**照片 |
+| PUT | `/api/changeover/items/{item_id}/photos/{seq}` | **替换**指定序号的照片 |
+| DELETE | `/api/changeover/items/{item_id}/photos/{seq}` | 删单张照片（仅草稿态） |
+| GET | `/api/changeover/items/{item_id}/photos/{seq}` | 按序号取图 |
+| GET | `/api/changeover/items/{item_id}/photo?ver=` | 图片代理（缺省=草稿/首张） |
+| GET | `/api/changeover/items/{item_id}/versions` | 版本历史（倒序） |
 
 ### 白平衡查询
 | 方法 | 路径 | 说明 |

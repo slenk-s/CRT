@@ -7,9 +7,10 @@ services/storage.py —— SMB 照片存储层（生产用）
 约定：
   - 数据库里只存**共享内相对路径**（不含 host/share），保证可移植；
   - 真实读写时再拼成 UNC：\\\\{SMB_HOST}\\{SMB_SHARE}\\{SMB_ROOT}\\{rel}；
-  - 草稿区：{SMB_ROOT}/_draft/{changeover_id}/{item_id}.jpg
-  - 正式区：{SMB_ROOT}/{日期}/{线体}/{批次}/{工位}/{HHMMSS}_{工号}_v{版本}.jpg
-  - 提交 = 同盘 rename（草稿 → 正式），代价低；纠错改版 = 写新版本文件。
+  - 草稿区：{SMB_ROOT}/_draft/{changeover_id}/{item_id}/{批次}_{工位}_{序号}.{ext}
+  - 正式区：{SMB_ROOT}/{日期}/{线体}/{批次}/{工位}/{批次}_{工位}_{序号}_v{版本}.{ext}
+  - 提交 = 同盘 rename（草稿 → 正式）并补上 `_v1`；替换某张 = 写新版本文件（旧文件保留，
+    版本历史仍要按 `co_item_version.photo_rel_path` 读回它）。
 
 配置（全部走环境变量，不写死）：
   SMB_HOST, SMB_SHARE, SMB_ROOT(=共享内子路径，如 "slenk_\\FA_ROOT"),
@@ -38,11 +39,18 @@ except ImportError:  # pragma: no cover
 # （Windows 上实测约 20s），离线降级路径必须先等完这段时间；局域网内 5s 足够。
 SMB_CONNECT_TIMEOUT = 5.0
 
-def photo_display_name(batch: str, station: str, seq: int, ext: str) -> str:
-    """统一命名：`{批次}_{工位}_{序号}.{ext}`（清理非法字符后拼接）。"""
-    return "%s_%s_%d.%s" % (
-        sanitize_segment(batch), sanitize_segment(station), int(seq), ext.lower()
-    )
+def photo_display_name(batch: str, station: str, seq: int, ext: str,
+                       ver: int | None = None) -> str:
+    """统一命名：`{批次}_{工位}_{序号}.{ext}`，带 ver 时追加 `_v{版本}`。
+
+    草稿尚未提交、没有版本号，`ver` 留空；提交后每张照片带上它开始生效的版本号
+    （`{批次}_{工位}_{序号}_v1.{ext}`），替换某张时写 `_v{新版本}`，
+    这样在共享盘上翻文件就能看出哪张属于哪一版。
+    """
+    stem = "%s_%s_%d" % (sanitize_segment(batch), sanitize_segment(station), int(seq))
+    if ver is not None:
+        stem += "_v%d" % int(ver)
+    return "%s.%s" % (stem, ext.lower())
 
 _ILLEGAL = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
@@ -124,21 +132,11 @@ class SmbStorage:
         """SMB_ROOT 对应的 UNC 绝对路径。"""
         return self.unc(self.root)
 
-    # ---------- 路径构建 ----------
-    def draft_rel(self, changeover_id: int, item_id: int, ext: str = "jpg") -> str:
-        return self.rel("_draft", str(changeover_id), sanitize_segment("%s.%s" % (item_id, ext)))
-
-    def final_rel(self, date: str, line: str, batch: str, station: str,
-                  ts: str, emp_id: str, ver: int, ext: str = "jpg") -> str:
-        name = "%s_%s_v%d.%s" % (sanitize_segment(ts), sanitize_segment(emp_id), int(ver), ext)
-        return self.rel(sanitize_segment(date), sanitize_segment(line),
-                        sanitize_segment(batch), sanitize_segment(station), name)
-
+    # ---------- 读写 ----------
     @staticmethod
     def now_ts() -> str:
         return _dt.datetime.now().strftime("%H%M%S")
 
-    # ---------- 读写 ----------
     def makedirs(self, rel: str) -> None:
         self._ensure()
         try:
@@ -350,9 +348,9 @@ def _self_test() -> int:
     print("目标：", st.root_unc())
     print("健康检查：", st.health_check())
 
-    d_rel = st.draft_rel(999999, 1)
-    f_rel = st.final_rel("2026-10-08", "1F01", "B20261008A", "耐压工位",
-                         st.now_ts(), "00660301", 1)
+    d_rel = st.rel("_draft", "999999", "1", photo_display_name("B20261008A", "耐压工位", 1, "jpg"))
+    f_rel = st.rel("2026-10-08", "1F01", "B20261008A", "耐压工位",
+                   photo_display_name("B20261008A", "耐压工位", 1, "jpg", ver=1))
     body = ("storage ok @ %s\n" % _dt.datetime.now().isoformat(timespec="seconds")).encode("utf-8")
 
     st.write_bytes(d_rel, body)

@@ -303,14 +303,16 @@ def test_submit_mixed_photos_offline_fails_whole_item(client, auth, offline_stor
     assert client.get(f"/api/changeover/items/{it['id']}/versions", headers=auth).json() == []
 
 
-def test_append_photo_offline_rejected_503(client, auth, offline_storage):
-    """已提交条目在 SMB 离线时追加照片：返回 503，不生成新版本。
+def test_append_photo_offline_succeeds_pending(client, auth, offline_storage):
+    """已提交条目在 SMB 离线时追加照片：照常成功，落本地 synced=0，等后台补推。
 
-    分两阶段：先用 FakeStorage 走一遍创建+提交（模拟 SMB 在线），
-    再切到离线态尝试追加（应被拒绝）。
+    分两阶段：先用 FakeStorage 走一遍创建+提交（模拟 SMB 在线），再切到离线态追加。
+
+    回归点：早年这里直接返回 503，但文件其实已经写进本地目录、记录却没建，
+    等于留下一个永远同步不到的孤儿文件（后台同步只认数据库记录）。
     """
     from app.routers import changeover as router
-    from fakes import FakeStorage, BrokenSmbStorage
+    from fakes import FakeStorage
 
     fake = FakeStorage()
     saved = router._test_smb_storage
@@ -323,16 +325,22 @@ def test_append_photo_offline_rejected_503(client, auth, offline_storage):
     finally:
         router._test_smb_storage = saved
 
-    # 阶段 2：SMB 离线（offline_storage fixture 已置 BrokenSmb），尝试追加照片
+    # 阶段 2：SMB 离线（offline_storage fixture 已置 BrokenSmb），追加照片
     r = _upload(client, auth, it["id"], PNG, name="new.png")
-    assert r.status_code == 503, r.text
-    # 版本仍是 v1（未新增）
-    detail = client.get(f"/api/changeover/{co['id']}", headers=auth).json()
-    assert detail["items"][0]["current_ver"] == 1
+    assert r.status_code == 200, r.text
+    assert r.json()["current_ver"] == 2
+    assert r.json()["has_photo_pending_sync"] is True
+    # 新版本已建，新照片落本地待同步
     versions = client.get(f"/api/changeover/items/{it['id']}/versions", headers=auth).json()
-    assert [v["ver"] for v in versions] == [1]
-    # 本地临时目录里确实落了那个暂存文件（等待后续同步/手动清理）
-    # 但本次响应是 503，DB 里没有 v2 版本记录
+    assert [v["ver"] for v in versions] == [2, 1]
+    assert versions[0]["edit_note"] == "追加照片"
+    new_photo = [p for p in r.json()["draft_photos"] if p["seq"] == 2][0]
+    assert new_photo["synced"] == 0
+    assert offline_storage["local"].exists(new_photo["rel_path"])
+    # 离线照片走本地代理仍可读
+    assert client.get(new_photo["url"], headers=auth).content == PNG
+    # 旧版文件仍在共享盘上，未被触碰
+    assert fake.files
 
 
 # ---------------------------------------------------------------- 健康检查接口

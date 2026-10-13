@@ -154,7 +154,10 @@ python -m app.preflight --strict               # 有告警即失败
 | PUT | `/api/changeover/items/{item_id}` | 已提交条目纠错（生成新版本） |
 | DELETE | `/api/changeover/items/{item_id}` | 删条目（草稿清文件；已提交软删留历史） |
 | POST | `/api/changeover/{id}/submit` | 统一提交归档 |
-| POST | `/api/changeover/items/{item_id}/photo` | 上传/替换照片（草稿覆盖；已提交=新版本） |
+| POST | `/api/changeover/items/{item_id}/photo` | **追加**一张照片（草稿=落草稿区；已提交=生成新版本） |
+| PUT | `/api/changeover/items/{item_id}/photos/{seq}` | **替换**指定序号的照片（草稿=原地覆盖；已提交=新版本，旧文件保留） |
+| DELETE | `/api/changeover/items/{item_id}/photos/{seq}` | 删除单张照片（仅草稿态） |
+| GET | `/api/changeover/items/{item_id}/photos/{seq}` | 按序号取图（流式转发，本地降级照片同样可读） |
 | GET | `/api/changeover/items/{item_id}/photo?ver=` | 图片代理（草稿优先/指定版本，流式转发） |
 | GET | `/api/changeover/items/{item_id}/versions` | 版本历史（倒序） |
 
@@ -189,13 +192,24 @@ python -m app.preflight --strict               # 有告警即失败
 ## 5. 存储路径约定
 
 ```text
-草稿区  {SMB_ROOT}/_draft/{changeover_id}/{item_id}.{ext}
-正式区  {SMB_ROOT}/{YYYY-MM-DD}/{line}/{batch}/{station}/{HHMMSS}_{工号}_v{ver}.{ext}
+草稿区  {SMB_ROOT}/_draft/{changeover_id}/{item_id}/{批次}_{工位}_{序号}.{ext}
+正式区  {SMB_ROOT}/{YYYY-MM-DD}/{line}/{batch}/{station}/{批次}_{工位}_{序号}_v{版本}.{ext}
 ```
 
-- 拍照即上传草稿区；**统一提交**时 `move` 到正式区并生成 `co_item_version` 的 v1 记录。
-- 提交后**纠错**：更正勾选/备注 → 版本 `ver+1`（复用原照片）；替换照片 → 写新版本文件 `_v{ver}`（旧版文件保留）。
-- 文件迁移失败只影响该条目并回报，不阻塞整单；草稿文件缺失的条目提交失败、其余照常转正。
+- 拍照即上传草稿区（文件名不带版本号）；**统一提交**时 `move` 到正式区并**改名为 `_v1`**，
+  同时生成 `co_item_version` 的 v1 记录。共享盘上直接翻文件即可看出哪张属于哪一版。
+- 提交后**纠错**：更正勾选/备注 → 版本 `ver+1`（复用原照片）；「替换」某张 → 写新文件
+  `_v{新版本}` 并生成新版本记录（`edit_note` = 「替换照片 #{序号}」），**旧文件保留不删**——
+  版本历史靠 `co_item_version.photo_rel_path` 读回旧图。
+- 一个工位可有多张照片（`seq` 递增）。「追加」新增一张，「替换」只换指定 `seq` 那张、
+  照片数量不变。`co_item_version` 一条记录只挂一张照片，代表**那次操作涉及的那张**；
+  工位总大小由 `co_item_photo` 各行汇总。
+- 文件迁移失败只影响该条目并回报，不阻塞整单；条目内任一张失败则整条回滚（已搬的搬回），
+  不会留下「条目仍是草稿、文件却在正式区」的错位状态。
+- SMB 不可达时上传/追加/替换一律降级到本地（`synced=0`），后台同步服务随后按 `rel_path`
+  原样补推；已判定离线时读图直接查本地，不空等连接超时。
+- 历史遗留的老命名（`{HHMMSS}_{工号}_v{ver}.{ext}`）**不做迁移**：所有读取都走库里存的
+  路径字符串，文件名只是给人看的。新旧命名在同一目录并存。
 
 ---
 
@@ -210,6 +224,8 @@ PYTHONPATH=. python -m pytest tests -q
 - `test_smoke.py`：健康检查 / 认证 / 字典。
 - `test_changeover.py`：转产草稿链路（会话/条目/草稿照片/锁定）。
 - `test_submit.py`：统一提交 / 版本化纠错 / 正式图代理。
+- `test_replace.py`：逐张替换（`_v{版本}` 命名、旧文件保留、草稿原地覆盖、离线降级、读图不空等 SMB）。
+- `test_offline.py`：SMB 离线降级全链路（上传/读/删/提交/追加/后台补推/健康检查）。
 - `test_admin.py`：字典/用户管理、权限边界、线体/工位/检查项删除行为。
 - `test_reports.py`：CSV 导出 BOM、统计结构。
 - `test_wb.py`：WB 查询 mock 源、单条失败、参数校验、503 降级。

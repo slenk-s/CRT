@@ -44,12 +44,12 @@ def test_submit_promotes_drafts(client, fake_storage, auth):
     assert body["failures"] == []
     assert body["submitted_at"]
 
-    # 草稿区已清空，正式区出现 v1
+    # 草稿区已清空，正式区出现 v1（归档后文件名补上 _v1）
     from app.services.storage import photo_display_name
-    expected_name = photo_display_name("S-1", "白平衡工位", 1, "jpg")
-    draft_key = f"slenk_\\FA_ROOT\\_draft\\{cid}\\{it1['id']}\\{expected_name}"
+    draft_key = f"slenk_\\FA_ROOT\\_draft\\{cid}\\{it1['id']}\\{photo_display_name('S-1', '白平衡工位', 1, 'jpg')}"
     assert draft_key not in fake_storage.files
-    final_path = f"slenk_\\FA_ROOT\\2026-10-09\\1F01\\S-1\\白平衡工位\\{expected_name}"
+    final_name = photo_display_name("S-1", "白平衡工位", 1, "jpg", ver=1)
+    final_path = f"slenk_\\FA_ROOT\\2026-10-09\\1F01\\S-1\\白平衡工位\\{final_name}"
     assert final_path in fake_storage.files
     assert fake_storage.files[final_path] == JPEG
     # 详情校验
@@ -154,20 +154,24 @@ def test_correct_rejected_on_draft(client, fake_storage, auth):
     assert r.status_code == 409
 
 
-def test_replace_photo_after_submit_adds_version(client, fake_storage, auth):
+def test_append_photo_after_submit_adds_version(client, fake_storage, auth):
     co = _co(client, auth, "S-7")
     cid = co["id"]
     it = _item(client, auth, cid, "耐压工位")
     _upload(client, auth, it["id"], JPEG)
     client.post(f"/api/changeover/{cid}/submit", headers=auth)
     from app.services.storage import photo_display_name
-    v1_name = photo_display_name("S-7", "耐压工位", 1, "jpg")
+    v1_name = photo_display_name("S-7", "耐压工位", 1, "jpg", ver=1)
     v1_path = f"slenk_\\FA_ROOT\\2026-10-09\\1F01\\S-7\\耐压工位\\{v1_name}"
     assert v1_path in fake_storage.files
 
     r = _upload(client, auth, it["id"], PNG, name="new.png")
     assert r.status_code == 200
     assert r.json()["current_ver"] == 2
+    # 追加 = 多出一张（seq 递增），文件名带新版本号
+    assert [p["seq"] for p in r.json()["draft_photos"]] == [1, 2]
+    assert any(p["name"] == photo_display_name("S-7", "耐压工位", 2, "png", ver=2)
+               for p in r.json()["draft_photos"])
     # 旧版文件保留 + 新版本文件存在
     assert v1_path in fake_storage.files
     assert any("耐压工位" in p for p in fake_storage.files)

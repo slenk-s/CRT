@@ -216,6 +216,15 @@ def _smb_storage_or_none() -> SmbStorage | None:
         return None
 
 
+def _remove_photo_file(synced: int, rel: str) -> bool:
+    """删掉一张照片文件（按 synced 判断在共享盘还是本地）。返回是否真的删了。"""
+    storage_obj = _smb_storage_or_none() if synced == 1 else _local_storage()
+    if storage_obj and storage_obj.exists(rel):
+        storage_obj.remove(rel)
+        return True
+    return False
+
+
 def _smb_skip_write() -> bool:
     """是否跳过 SMB、直接写本地。
 
@@ -228,6 +237,19 @@ def _smb_skip_write() -> bool:
     if _test_smb_storage is not None:
         return False
     return not sync_svc.smb_status().get("ok")
+
+
+def _smb_known_offline() -> bool:
+    """探测是否已**明确判定**离线（尚未探测时返回 False）。
+
+    读路径专用：与 `_smb_skip_write` 不同，这里不能把「尚未探测」当成离线——
+    共享盘上的照片是真实存在的，启动后头几秒若判定不了就去查，否则会误报 404。
+    只有拿到明确结论才跳过，省掉每次 5s 的连接超时。
+    """
+    if _test_smb_storage is not None:
+        return False
+    st = sync_svc.smb_status()
+    return bool(st.get("checked_at")) and not st.get("ok")
 
 
 def _write_photo_fallback(rel: str, data: bytes) -> tuple[int, str]:
@@ -256,7 +278,8 @@ def _item_out(db: Session, item: CoItem, co: Changeover, sorts: dict[str, int],
     if submitted:
         check = (latest.check_result if latest else "") or ""
         remark = (latest.remark if latest else "") or ""
-        size = (latest.file_size if latest else 0) or 0
+        # 版本记录只存"那次操作涉及的单张"大小，卡片要的是该工位全部照片的总和
+        size = sum(p.size or 0 for p in photos)
         upd = latest.created_at if latest else item.updated_at
         photo_url = (f"/api/changeover/items/{item.id}/photo?ver={item.current_ver}"
                      if has_photo else None)
@@ -639,10 +662,13 @@ def submit_changeover(
 
         # 先整条预检再搬运：否则可能出现「前几张已进正式区、后面失败」，
         # 留下条目仍是草稿、文件却已在正式区的错位状态。
-        plan: list[tuple[CoItemPhoto, str]] = []
+        plan: list[tuple[CoItemPhoto, str, str]] = []   # (照片, 归档后新名, 归档后新路径)
         reason = ""
         for p in photos:
-            dst = _final_rel(co.shot_date, co.line, co.batch, it.station, p.name)
+            # 草稿名不带版本号，归档后统一补 `_v1`：共享盘上翻文件即可看出属于哪一版
+            new_name = photo_display_name(co.batch, it.station, p.seq,
+                                          p.name.rsplit(".", 1)[-1], ver=1)
+            dst = _final_rel(co.shot_date, co.line, co.batch, it.station, new_name)
             if p.synced == 1:
                 if not _smb_online():
                     reason = "归档失败：SMB 不可用（离线），该照片在共享盘上，暂时无法归档"
@@ -653,7 +679,7 @@ def submit_changeover(
             elif not _local_storage().exists(p.rel_path):
                 reason = "归档失败：本地草稿照片文件缺失"
                 break
-            plan.append((p, dst))
+            plan.append((p, new_name, dst))
         if reason:
             failures.append(SubmitItemResult(item_id=it.id, station=it.station, ok=False,
                                              reason=reason))
@@ -661,21 +687,22 @@ def submit_changeover(
 
         archived: list[CoItemPhoto] = []
         # 已搬走的照片，失败时逐张搬回，保证条目整体要么全转正、要么维持草稿
-        moved: list[tuple[CoItemPhoto, str]] = []
+        moved: list[tuple[CoItemPhoto, str, str]] = []   # (照片, 原路径, 原名)
         try:
-            for p, dst in plan:
-                prev = p.rel_path
+            for p, new_name, dst in plan:
+                prev_rel, prev_name = p.rel_path, p.name
                 _relocate(p, dst)
-                p.rel_path = dst
-                moved.append((p, prev))
+                p.rel_path, p.name = dst, new_name
+                moved.append((p, prev_rel, prev_name))
                 archived.append(p)
         except StorageError as exc:
-            for p, prev in reversed(moved):
+            for p, prev_rel, prev_name in reversed(moved):
                 try:
-                    _relocate(p, prev)
+                    _relocate(p, prev_rel)
                 except StorageError:
                     pass  # 搬不回去也只能先还原记录，避免指向不存在的新路径
-                p.rel_path = prev
+                # 名字和路径必须一起还原：只还原其一会让记录与文件对不上
+                p.rel_path, p.name = prev_rel, prev_name
             failures.append(SubmitItemResult(item_id=it.id, station=it.station, ok=False,
                                              reason=f"归档失败：{exc}"))
             continue
@@ -683,7 +710,8 @@ def submit_changeover(
         first = archived[0] if archived else None
         rel_path = first.rel_path if first else ""
         photo_name = first.name if first else ""
-        file_size = sum(p.size for p in archived)
+        # 版本记录代表"这次操作涉及的那张"，所以存单张大小；工位总大小由 _item_out 汇总
+        file_size = first.size if first else 0
 
         db.add(CoItemVersion(
             item_id=it.id, ver=1, photo_rel_path=rel_path,
@@ -871,7 +899,7 @@ async def upload_item_photo(
     """追加一张照片到条目（多图）。
 
     - 草稿态：写 _draft 区，文件名统一为 `{批次}_{工位}_{序号}.{ext}`。
-    - 已提交态：写正式区 + 生成新版本（旧版本保留）。
+    - 已提交态：写正式区 + 生成新版本（旧版本保留），文件名带 `_v{新版本}`。
     - SMB 不可用时自动降级到本地临时目录（synced=0），后台自动同步。
     """
     item = _get_item(db, item_id)
@@ -881,9 +909,9 @@ async def upload_item_photo(
     data, ext = await _read_image(file)
     sorts = _station_sort_map(db)
     seq = _next_seq(db, item.id)
-    name = photo_display_name(co.batch, item.station, seq, ext)
 
     if co.status == "draft":
+        name = photo_display_name(co.batch, item.station, seq, ext)
         rel = _draft_rel(co.id, item.id, name)
         synced, actual_rel = _write_photo_fallback(rel, data)
         photo = CoItemPhoto(
@@ -903,13 +931,12 @@ async def upload_item_photo(
         if not latest:
             raise HTTPException(status.HTTP_409_CONFLICT, "该条目没有可追加的版本")
         new_ver = item.current_ver + 1
+        name = photo_display_name(co.batch, item.station, seq, ext, ver=new_ver)
         dst = _final_rel(co.shot_date, co.line, co.batch, item.station, name)
+        # 离线也照常建记录：文件落本地 synced=0，后台同步服务随后补推。
+        # 曾经这里直接抛 503，但文件已经写下去了、记录却没建，等于留下一个
+        # 永远同步不到的孤儿文件（同步只认数据库记录）。
         synced, actual_rel = _write_photo_fallback(dst, data)
-        if synced == 0:
-            raise HTTPException(
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-                "SMB 不可用；已暂存到本地临时目录（synced=0），恢复后会自动同步",
-            )
         ver = CoItemVersion(
             item_id=item.id, ver=new_ver, photo_rel_path=actual_rel,
             photo_name=name, file_size=len(data),
@@ -925,7 +952,89 @@ async def upload_item_photo(
         db.add(photo)
         item.current_ver = new_ver
         audit(db, emp_id=user.emp_id, action="item.photo.append", target=f"item:{item.id}",
-              detail={"seq": seq, "ver": new_ver, "path": actual_rel, "size": len(data)})
+              detail={"seq": seq, "ver": new_ver, "path": actual_rel, "size": len(data),
+                      "synced": synced})
+        db.commit()
+        return _item_out(db, item, co, sorts, True, ver)
+
+    raise HTTPException(status.HTTP_409_CONFLICT, "未知会话状态")
+
+
+@router.put("/items/{item_id}/photos/{seq}", response_model=ItemOut)
+async def replace_item_photo(
+    item_id: int,
+    seq: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """替换条目里指定序号的那张照片（逐张替换，同条目其他照片不受影响）。
+
+    - 草稿态：原地覆盖同一路径，不产生版本（草稿本就没有历史）。
+    - 已提交态：写新文件 `{批次}_{工位}_{序号}_v{新版本}.{ext}`，该行记录就地更新
+      （保持 seq 不变，卡片上原来那张就地换掉），并生成新版本记录，
+      `edit_note` 标为「替换照片 #{seq}」。
+    - **旧文件保留不删**：版本历史要靠 `co_item_version.photo_rel_path` 读回旧图。
+    - SMB 不可用时降级到本地（synced=0），后台自动同步。
+    """
+    item = _get_item(db, item_id)
+    co = _get_co(db, item.changeover_id)
+    ensure_owner_or_admin(co.uploader_emp_id, user)
+
+    photo = (db.query(CoItemPhoto)
+               .filter(CoItemPhoto.item_id == item.id, CoItemPhoto.seq == seq)
+               .first())
+    if not photo:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"照片不存在 (seq={seq})")
+
+    data, ext = await _read_image(file)
+    old_rel = photo.rel_path
+    sorts = _station_sort_map(db)
+
+    if co.status == "draft":
+        name = photo_display_name(co.batch, item.station, seq, ext)
+        dst = _draft_rel(co.id, item.id, name)
+        synced, actual_rel = _write_photo_fallback(dst, data)
+        if actual_rel != old_rel:
+            # 扩展名变了 → 新路径覆盖不到旧文件，草稿的文件归自己管（没有历史要留）
+            try:
+                _remove_photo_file(photo.synced, old_rel)
+            except StorageError:
+                pass
+        photo.rel_path, photo.name = actual_rel, name
+        photo.size, photo.synced = len(data), synced
+        photo.uploader_emp_id, photo.uploader_name = user.emp_id, user.name
+        photo.created_at = _now_str()
+        item.draft_updated_at = _now_str()
+        audit(db, emp_id=user.emp_id, action="item.photo.replace", target=f"item:{item.id}",
+              detail={"seq": seq, "path": actual_rel, "size": len(data), "synced": synced})
+        db.commit()
+        return _item_out(db, item, co, sorts, False)
+
+    if co.status == "submitted":
+        latest = _latest_version(db, item.id)
+        if not latest:
+            raise HTTPException(status.HTTP_409_CONFLICT, "该条目没有可修改的版本")
+        new_ver = item.current_ver + 1
+        name = photo_display_name(co.batch, item.station, seq, ext, ver=new_ver)
+        dst = _final_rel(co.shot_date, co.line, co.batch, item.station, name)
+        synced, actual_rel = _write_photo_fallback(dst, data)
+        photo.rel_path, photo.name = actual_rel, name
+        photo.size, photo.synced = len(data), synced
+        photo.uploader_emp_id, photo.uploader_name = user.emp_id, user.name
+        photo.created_at = _now_str()
+        ver = CoItemVersion(
+            item_id=item.id, ver=new_ver, photo_rel_path=actual_rel,
+            photo_name=name, file_size=len(data),
+            check_result=latest.check_result, remark=latest.remark,
+            edit_note=f"替换照片 #{seq}",
+            uploader_emp_id=user.emp_id, uploader_name=user.name,
+        )
+        db.add(ver)
+        item.current_ver = new_ver
+        audit(db, emp_id=user.emp_id, action="item.photo.replace", target=f"item:{item.id}",
+              detail={"seq": seq, "ver": new_ver, "path": actual_rel,
+                      "size": len(data), "synced": synced})
         db.commit()
         return _item_out(db, item, co, sorts, True, ver)
 
@@ -956,16 +1065,7 @@ def delete_item_photo(
     removed = False
     err = ""
     try:
-        if photo.synced == 1:
-            smb = _smb_storage_or_none()
-            if smb and smb.exists(photo.rel_path):
-                smb.remove(photo.rel_path)
-                removed = True
-        else:
-            local = _local_storage()
-            if local.exists(photo.rel_path):
-                local.remove(photo.rel_path)
-                removed = True
+        removed = _remove_photo_file(photo.synced, photo.rel_path)
     except StorageError as exc:
         err = str(exc)
 
@@ -1055,8 +1155,8 @@ def get_item_photo(
     if not rel:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "该条目暂无照片")
 
-    # 判断存储位置
-    storage_obj = _smb_storage_or_none()
+    # 判断存储位置；已判定离线时直接查本地，免得每次白等一次 SMB 连接超时
+    storage_obj = None if _smb_known_offline() else _smb_storage_or_none()
     if storage_obj and storage_obj.exists(rel):
         pass
     else:

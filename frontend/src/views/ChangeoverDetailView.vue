@@ -122,21 +122,39 @@ async function submitCorrect() {
   }
 }
 
-// ---------------- 替换照片（生成新版本） ----------------
-const replacingId = ref(0)
-async function onReplacePhoto(it: ItemOut, ev: Event) {
+// ---------------- 追加照片（条目级：多出一张，已提交=新版本） ----------------
+const appendingId = ref(0)
+async function onAppendPhoto(it: ItemOut, ev: Event) {
   const input = ev.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
-  replacingId.value = it.id
+  appendingId.value = it.id
   try {
     const small = await compressImage(file)
     await api.itemUploadPhoto(it.id, small)
-    ElMessage.success('照片已替换并生成新版本')
+    ElMessage.success('已追加照片，并生成新版本')
     await load()
   } finally {
-    replacingId.value = 0
+    appendingId.value = 0
+  }
+}
+
+// ---------------- 逐张替换（只换指定序号那张，旧文件进历史版本） ----------------
+const replacingKey = ref('')
+async function onReplacePhoto(it: ItemOut, seq: number, ev: Event) {
+  const input = ev.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  replacingKey.value = `${it.id}-${seq}`
+  try {
+    const small = await compressImage(file)
+    await api.itemReplacePhoto(it.id, seq, small)
+    ElMessage.success(isSubmitted.value ? '照片已替换，并生成新版本' : '照片已替换')
+    await load()
+  } finally {
+    replacingKey.value = ''
   }
 }
 
@@ -226,6 +244,16 @@ onMounted(async () => {
             >
               <AuthImage :path="ph.url" :on-preview="(u) => (previewUrl = u)" />
               <span v-if="ph.synced === 0" class="pending-badge">待同步</span>
+              <!-- 逐张替换：只换这一张，已提交记录会生成新版本、旧图留在版本历史里 -->
+              <label
+                v-if="canOperate"
+                class="photo-replace"
+                :class="{ disabled: replacingKey === `${it.id}-${ph.seq}` }"
+                :title="`替换第 ${ph.seq} 张`"
+              >
+                <el-icon><Refresh /></el-icon>
+                <input type="file" accept="image/*" @change="(e) => onReplacePhoto(it, ph.seq, e)" />
+              </label>
             </div>
           </template>
           <div v-else class="thumb-ph">未拍照</div>
@@ -259,10 +287,10 @@ onMounted(async () => {
           <el-button size="small" @click="openCorrect(it)">
             <el-icon><EditPen /></el-icon>更正
           </el-button>
-          <label class="btn-like" :class="{ disabled: replacingId === it.id }">
-            <el-icon><Refresh /></el-icon>
-            <span>{{ replacingId === it.id ? '替换中…' : '替换照片' }}</span>
-            <input type="file" accept="image/*" @change="(e) => onReplacePhoto(it, e)" />
+          <label class="btn-like" :class="{ disabled: appendingId === it.id }">
+            <el-icon><Plus /></el-icon>
+            <span>{{ appendingId === it.id ? '上传中…' : '追加照片' }}</span>
+            <input type="file" accept="image/*" @change="(e) => onAppendPhoto(it, e)" />
           </label>
           <el-button size="small" @click="openVersions(it)">
             <el-icon><Clock /></el-icon>版本历史
@@ -377,6 +405,17 @@ onMounted(async () => {
   font-size: 10px; padding: 1px 4px; border-radius: 3px;
   background: var(--el-color-danger); color: #fff; white-space: nowrap;
 }
+/* 缩略图上的逐张替换入口：常显（现场多为触屏，hover 才出现会点不到） */
+.photo-replace {
+  position: absolute; top: 2px; right: 2px;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 4px;
+  background: rgba(0, 0, 0, .5); color: #fff; font-size: 12px;
+  cursor: pointer; transition: background .15s ease;
+}
+.photo-replace:hover { background: var(--primary); }
+.photo-replace.disabled { opacity: .5; cursor: not-allowed; }
+.photo-replace input { display: none; }
 .sync-note {
   display: flex; align-items: center; gap: 5px;
   margin-top: 6px; font-size: 12px; color: var(--el-color-danger);

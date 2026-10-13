@@ -15,17 +15,6 @@ class FakeStorage:
         self.files: dict[str, bytes] = {}
         self.removed: list[str] = []
 
-    # ---- 路径构建（与 SmbStorage 保持一致的形状） ----
-    def draft_rel(self, changeover_id, item_id, ext="jpg"):
-        return f"{self.root}\\{'_draft'}\\{changeover_id}\\{item_id}.{ext}"
-
-    def final_rel(self, date, line, batch, station, ts, emp_id, ver, ext="jpg"):
-        return f"{self.root}\\{date}\\{line}\\{batch}\\{station}\\{ts}_{emp_id}_v{ver}.{ext}"
-
-    @staticmethod
-    def now_ts():
-        return "120000"
-
     # ---- 读写 ----
     def write_bytes(self, rel, data):
         self.files[rel] = bytes(data)
