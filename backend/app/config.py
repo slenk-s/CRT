@@ -5,13 +5,27 @@ import os
 from pathlib import Path
 
 # 自动加载 .env 文件（如果存在）
+# 不引入 python-dotenv：它不是本项目的显式依赖，且这里只需要「键=值」这一种写法。
+# 有意不处理转义（SMB_ROOT 里的 \\ 需要原样保留，交给 SmbStorage._norm 归一）。
+def _load_env_file(path: Path) -> None:
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if key.startswith("export "):          # 兼容从 shell 脚本粘贴过来的写法
+            key = key[len("export "):].strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]                # 去掉包裹引号（引号本身不是值的一部分）
+        if key:
+            os.environ.setdefault(key, value)  # 已在环境里的值优先，便于临时覆盖
+
+
 _env_file = Path(__file__).resolve().parent.parent / ".env"
 if _env_file.exists():
-    for _line in _env_file.read_text(encoding="utf-8").splitlines():
-        _line = _line.strip()
-        if _line and not _line.startswith("#") and "=" in _line:
-            _k, _v = _line.split("=", 1)
-            os.environ.setdefault(_k.strip(), _v.strip())
+    _load_env_file(_env_file)
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # backend/
 

@@ -107,9 +107,25 @@ def stop_status_loop() -> None:
         _status_thread = None
 
 
+def _smb_known_offline() -> bool:
+    """缓存里已明确判定离线时返回 True。
+
+    「尚未探测」（checked_at 为空）不算离线：此时没有任何结论，
+    照常尝试一次，避免刚启动就把同步卡死。
+    """
+    st = smb_status()
+    return bool(st["checked_at"]) and not st["ok"]
+
+
 def _sync_once() -> int:
     """单次同步：把所有 synced=0 的照片搬到 SMB，返回成功数。"""
     if not (config.SMB_HOST and config.SMB_SHARE):
+        return 0
+    if _smb_known_offline():
+        # 探测线程已明确判定离线：跳过本轮。否则每轮都要白等一次连接超时，
+        # 并把同一条失败日志按固定间隔刷屏。探测恢复连通后会写回 ok=True，
+        # 下一轮自动继续——所以这里的跳过不会让同步永久卡住。
+        log.debug("SMB 已判定离线，跳过本轮同步")
         return 0
     db = SessionLocal()
     local = _new_local()

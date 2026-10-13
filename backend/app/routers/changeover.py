@@ -341,7 +341,7 @@ async def _read_image(file: UploadFile) -> tuple[bytes, str]:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "空文件")
     limit = config.MAX_IMAGE_MB * 1024 * 1024
     if len(data) > limit:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE,
                             f"图片超过 {config.MAX_IMAGE_MB} MB 上限")
     return data, _sniff_ext(data[:16], file.filename or "")
 
@@ -582,12 +582,15 @@ def submit_changeover(
     """统一提交：草稿照片 → 正式归档（v1）→ 会话置 submitted。
 
     - 每条目的照片按 seq 升序遍历
-    - 草稿照片（synced=1）从 _draft 区 move 到正式区
+    - 草稿照片（synced=1，在共享盘上）move 到正式区
     - 本地照片（synced=0，离线上传）仅在本地 move 到正式目录，synced 保持 0，
       等 SMB 恢复后由后台同步服务推送到共享盘
     - 未传照片的条目：允许（部分提交），仍生成 v1
-    - 某条目归档失败：该条目失败并回报，其余照常转正
+    - 条目内任一张照片无法归档：整条失败并回报（已搬的文件会搬回），其余照常转正
     - 全部条目都失败：不提交（保持草稿），返回 ok=False
+
+    SMB 离线时，synced=1 的照片位于共享盘上、本地没有副本，无法归档，
+    该条目会整体失败——不会出现「同一条目一半转正一半留在草稿」的状态。
     """
     co = _get_co(db, co_id)
     ensure_owner_or_admin(co.uploader_emp_id, user)
@@ -605,43 +608,76 @@ def submit_changeover(
     no_photo = 0
     failures: list[SubmitItemResult] = []
 
+    # 整场只探测一次 SMB 可达性：离线时每次探测都要等满连接超时，
+    # 逐张照片探测会把一次提交拖成分钟级。
+    _probed: list[bool] = []
+
+    def _smb_online() -> bool:
+        if not _probed:
+            smb = _smb_storage_or_none()
+            _probed.append(bool(smb and smb.reachable()))
+        return _probed[0]
+
+    def _relocate(p: CoItemPhoto, dst: str) -> None:
+        """把照片文件搬到 dst（同盘）。不校验存在性，调用方负责预检。"""
+        if p.synced == 1:
+            smb = _smb_storage_or_none()
+            if not smb:
+                raise StorageError("SMB 不可用（离线）")
+            if dst != p.rel_path:
+                smb.move(p.rel_path, dst)
+        else:
+            # 离线照片只在本地搬：synced 保持 0，SMB 恢复后由后台同步服务
+            # 按 rel_path 原样推送到共享盘（本地与共享盘路径结构一致）。
+            _local_storage().move(p.rel_path, dst)
+
     for it in items:
         photos = (db.query(CoItemPhoto)
                     .filter(CoItemPhoto.item_id == it.id)
                     .order_by(CoItemPhoto.seq.asc())
                     .all())
 
-        archived: list[CoItemPhoto] = []
-        item_failed = False
+        # 先整条预检再搬运：否则可能出现「前几张已进正式区、后面失败」，
+        # 留下条目仍是草稿、文件却已在正式区的错位状态。
+        plan: list[tuple[CoItemPhoto, str]] = []
+        reason = ""
         for p in photos:
             dst = _final_rel(co.shot_date, co.line, co.batch, it.station, p.name)
-            try:
-                if p.synced == 1:
-                    smb = _smb_storage_or_none()
-                    if not smb or not smb.reachable():
-                        raise StorageError("SMB 不可用（离线）")
-                    if not smb.exists(p.rel_path):
-                        raise StorageError("草稿照片文件缺失")
-                    if dst != p.rel_path:
-                        smb.move(p.rel_path, dst)
-                else:
-                    local = _local_storage()
-                    if not local.exists(p.rel_path):
-                        raise StorageError("本地草稿照片文件缺失")
-                    # 离线提交：仅在本地把草稿移到正式目录，synced 保持 0，不触碰 SMB。
-                    # 本地与共享盘的相对路径结构一致，SMB 恢复后由后台同步服务
-                    # 按 rel_path 原样推送，无需再次改路径。
-                    local.move(p.rel_path, dst)
-                    p.synced = 0
-                p.rel_path = dst
-                archived.append(p)
-            except StorageError as exc:
-                failures.append(SubmitItemResult(item_id=it.id, station=it.station, ok=False,
-                                                 reason=f"归档失败：{exc}"))
-                item_failed = True
+            if p.synced == 1:
+                if not _smb_online():
+                    reason = "归档失败：SMB 不可用（离线），该照片在共享盘上，暂时无法归档"
+                    break
+                if not _smb_storage_or_none().exists(p.rel_path):
+                    reason = "归档失败：草稿照片在共享盘上缺失"
+                    break
+            elif not _local_storage().exists(p.rel_path):
+                reason = "归档失败：本地草稿照片文件缺失"
                 break
+            plan.append((p, dst))
+        if reason:
+            failures.append(SubmitItemResult(item_id=it.id, station=it.station, ok=False,
+                                             reason=reason))
+            continue
 
-        if item_failed:
+        archived: list[CoItemPhoto] = []
+        # 已搬走的照片，失败时逐张搬回，保证条目整体要么全转正、要么维持草稿
+        moved: list[tuple[CoItemPhoto, str]] = []
+        try:
+            for p, dst in plan:
+                prev = p.rel_path
+                _relocate(p, dst)
+                p.rel_path = dst
+                moved.append((p, prev))
+                archived.append(p)
+        except StorageError as exc:
+            for p, prev in reversed(moved):
+                try:
+                    _relocate(p, prev)
+                except StorageError:
+                    pass  # 搬不回去也只能先还原记录，避免指向不存在的新路径
+                p.rel_path = prev
+            failures.append(SubmitItemResult(item_id=it.id, station=it.station, ok=False,
+                                             reason=f"归档失败：{exc}"))
             continue
 
         first = archived[0] if archived else None

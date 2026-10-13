@@ -224,6 +224,9 @@ def test_sync_service_pushes_pending_after_recovery(client, auth, offline_storag
     # 模拟 SMB 恢复：后台同步改走可用的内存存储
     smb = FakeStorage()
     monkeypatch.setattr(sync_svc, "SmbStorage", lambda: smb)
+    # 探测线程会先发现恢复并写回 ok=True，同步才继续；这里显式走一次同样的流程，
+    # 免得用例依赖全局状态缓存里残留的判定结果。
+    assert sync_svc.smb_status(force=True)["ok"] is True
     sync_svc._sync_once()
 
     assert smb.exists(rel_final)
@@ -250,25 +253,54 @@ def test_sync_service_skips_when_smb_offline(client, auth, offline_storage):
     assert p2["synced"] == 0
 
 
-def test_submit_offline_no_photo_item_still_fails(client, auth, offline_storage):
-    """离线提交（部分条目无照片）：全部条目都生成 v1，无照片条目 photo_url 为空。
+# ---------------------------------------------------------------- 已提交态追加
 
-    回归用例：确认离线态不会因为"无照片条目"而阻塞其他条目的转正。
+
+def test_submit_mixed_photos_offline_fails_whole_item(client, auth, offline_storage):
+    """同一条目里既有共享盘照片（synced=1）又有本地照片（synced=0），SMB 离线时整条失败。
+
+    synced=1 的照片只存在于共享盘上，本地没有副本，离线时无法归档；
+    此时不能让同条目其他照片「一半转正、一半留在草稿」。
     """
-    co = _co(client, auth, "OFF-7b")
-    it1 = _item(client, auth, co["id"], "白平衡工位")
-    _item(client, auth, co["id"], "AV工位")
-    _upload(client, auth, it1["id"], JPEG)
+    from app.routers import changeover as router
+    from fakes import FakeStorage
+
+    fake = FakeStorage()
+    saved = router._test_smb_storage
+    router._test_smb_storage = fake  # 阶段 1：SMB 在线，照片进共享盘
+    try:
+        co = _co(client, auth, "OFF-9")
+        it = _item(client, auth, co["id"], "白平衡工位")
+        assert _upload(client, auth, it["id"], JPEG).status_code == 200
+    finally:
+        router._test_smb_storage = saved  # 阶段 2：SMB 离线，追加照片落本地
+
+    r = _upload(client, auth, it["id"], PNG, name="b.png")
+    assert r.status_code == 200, r.text
+    photos = r.json()["draft_photos"]
+    assert [p["synced"] for p in photos] == [1, 0]
+    local_rel = photos[1]["rel_path"]
+    smb_rel = photos[0]["rel_path"]
+    assert offline_storage["local"].exists(local_rel)
 
     r = client.post(f"/api/changeover/{co['id']}/submit", headers=auth)
-    assert r.status_code == 200
+    assert r.status_code == 200, r.text
     body = r.json()
-    assert body["ok"] is True
-    assert body["failures"] == []
-    assert client.get(f"/api/changeover/{co['id']}", headers=auth).json()["status"] == "submitted"
+    assert body["ok"] is False
+    assert body["status"] == "draft"
+    assert body["versions_created"] == 0
+    assert len(body["failures"]) == 1
+    assert "SMB" in body["failures"][0]["reason"]
 
-
-# ---------------------------------------------------------------- 已提交态追加
+    # 本地照片仍在草稿区原处，没有被搬进正式区
+    detail = client.get(f"/api/changeover/{co['id']}", headers=auth).json()
+    assert detail["status"] == "draft"
+    item = detail["items"][0]
+    assert item["current_ver"] == 0
+    assert [p["rel_path"] for p in item["draft_photos"]] == [smb_rel, local_rel]
+    assert offline_storage["local"].exists(local_rel)
+    assert "_draft" in local_rel.replace("/", "\\")
+    assert client.get(f"/api/changeover/items/{it['id']}/versions", headers=auth).json() == []
 
 
 def test_append_photo_offline_rejected_503(client, auth, offline_storage):
