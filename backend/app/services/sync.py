@@ -5,9 +5,9 @@ SMB 不可用（离线）时上传落到本地临时目录（synced=0），本�
 """
 from __future__ import annotations
 
+import datetime as _dt
 import logging
 import threading
-import time
 from typing import Optional
 
 from .. import config
@@ -20,9 +20,91 @@ log = logging.getLogger("sync")
 _stop: threading.Event = threading.Event()
 _thread: Optional[threading.Thread] = None
 
+# ---- 实时连通性状态（供 /api/health 与前端状态条轮询）----
+# 探测放到后台线程：SMB 不通时一次连接超时可能长达十几秒，
+# 绝不能让 /api/health 的请求阻塞在网络上。接口只读缓存，永远瞬时返回。
+_STATUS_REFRESH = 20.0
+_status_stop: threading.Event = threading.Event()
+_status_thread: Optional[threading.Thread] = None
+_status_lock = threading.Lock()
+_status_cache: dict = {"ok": False, "message": "尚未检查", "checked_at": ""}
+
 
 def _new_local() -> LocalStorage:
     return LocalStorage(config.LOCAL_PHOTO_DIR)
+
+
+def _now_ts() -> str:
+    return _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _public_status() -> dict:
+    return {"ok": _status_cache["ok"], "message": _status_cache["message"],
+            "checked_at": _status_cache["checked_at"]}
+
+
+def _set_status(ok: bool, message: str) -> dict:
+    with _status_lock:
+        _status_cache["ok"] = ok
+        _status_cache["message"] = message
+        _status_cache["checked_at"] = _now_ts()
+        return _public_status()
+
+
+def _probe_smb() -> tuple[bool, str]:
+    if not (config.SMB_HOST and config.SMB_SHARE):
+        return False, "SMB 未配置，照片仅保存在本地"
+    try:
+        smb = SmbStorage()
+    except StorageError as exc:
+        return False, f"SMB 不可用：{exc}"
+    if smb.reachable():
+        return True, "SMB 共享盘可用"
+    return False, "SMB 不可用（离线）"
+
+
+def _probe_and_set() -> dict:
+    try:
+        ok, message = _probe_smb()
+    except Exception as exc:  # noqa: BLE001  探测失败不应影响服务
+        ok, message = False, f"SMB 状态检测异常：{type(exc).__name__}"
+    return _set_status(ok, message)
+
+
+def smb_status(force: bool = False) -> dict:
+    """SMB 连通性快照：{"ok", "message", "checked_at"}。
+
+    默认只读缓存（瞬时返回）；force=True 立刻探测一次，供测试与手动刷新。
+    `checked_at` 为空表示尚未完成首次探测。
+    """
+    if force:
+        return _probe_and_set()
+    with _status_lock:
+        return _public_status()
+
+
+def _status_loop() -> None:
+    log.info("SMB 状态探测线程启动（间隔 %ds）", _STATUS_REFRESH)
+    while not _status_stop.is_set():
+        _probe_and_set()
+        _status_stop.wait(_STATUS_REFRESH)
+
+
+def start_status_loop() -> None:
+    global _status_thread
+    if _status_thread is not None and _status_thread.is_alive():
+        return
+    _status_stop.clear()
+    _status_thread = threading.Thread(target=_status_loop, daemon=True, name="sync-smb-status")
+    _status_thread.start()
+
+
+def stop_status_loop() -> None:
+    global _status_thread
+    _status_stop.set()
+    if _status_thread is not None:
+        _status_thread.join(timeout=5)
+        _status_thread = None
 
 
 def _sync_once() -> int:
@@ -40,6 +122,7 @@ def _sync_once() -> int:
             smb = SmbStorage()
         except StorageError as exc:
             log.info("SMB 仍不可用，跳过本轮：%s", exc)
+            _set_status(False, f"SMB 不可用：{exc}")
             return 0
         for r in rows:
             if r.synced == 1:
@@ -53,6 +136,7 @@ def _sync_once() -> int:
                 data = local.read_bytes(r.rel_path)
                 smb.write_bytes(r.rel_path, data)
                 r.synced = 1
+                _set_status(True, "SMB 共享盘可用")
                 # rel_path 保持不变（本地和 SMB 的相对路径结构一致）
                 db.commit()
                 ok += 1
@@ -63,6 +147,7 @@ def _sync_once() -> int:
                     pass
             except StorageError as exc:
                 log.warning("同步 photo id=%d 失败：%s", r.id, exc)
+                _set_status(False, f"SMB 不可用：{exc}")
                 break  # SMB 又挂了，停止本轮
             except Exception:
                 db.rollback()

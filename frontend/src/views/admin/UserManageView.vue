@@ -13,6 +13,7 @@ const dialog = reactive({
   visible: false,
   isNew: true,
   emp_id: '',
+  origEmpId: '',
   name: '',
   password: '',
   role: 'line',
@@ -30,13 +31,14 @@ async function load() {
 }
 
 function openNew() {
-  Object.assign(dialog, { visible: true, isNew: true, emp_id: '', name: '', password: '', role: 'line', active: 1 })
+  Object.assign(dialog, { visible: true, isNew: true, emp_id: '', origEmpId: '', name: '', password: '', role: 'line', active: 1 })
 }
 function openEdit(row: UserAdmin) {
   Object.assign(dialog, {
     visible: true,
     isNew: false,
     emp_id: row.emp_id,
+    origEmpId: row.emp_id,
     name: row.name,
     password: '',
     role: row.role,
@@ -45,17 +47,25 @@ function openEdit(row: UserAdmin) {
 }
 
 async function save() {
-  if (dialog.isNew) {
-    if (!dialog.emp_id.trim() || !dialog.name.trim() || dialog.password.length < 6) {
-      ElMessage.warning('请填写工号、姓名，初始口令至少 6 位')
-      return
-    }
+  const empId = dialog.emp_id.trim()
+  if (!empId) {
+    ElMessage.warning('工号不能为空')
+    return
+  }
+  if (dialog.isNew && (!dialog.name.trim() || dialog.password.length < 6)) {
+    ElMessage.warning('请填写工号、姓名，初始口令至少 6 位')
+    return
+  }
+  const renamed = !dialog.isNew && empId !== dialog.origEmpId
+  if (renamed && dialog.origEmpId === me.profile?.emp_id) {
+    ElMessage.warning('不能修改当前登录账号的工号，请用其他管理员账号操作')
+    return
   }
   dialog.saving = true
   try {
     if (dialog.isNew) {
       await api.adminCreateUser({
-        emp_id: dialog.emp_id.trim(),
+        emp_id: empId,
         name: dialog.name.trim(),
         password: dialog.password,
         role: dialog.role,
@@ -63,9 +73,12 @@ async function save() {
       ElMessage.success('用户已创建（首次登录需修改口令）')
     } else {
       const body: Record<string, unknown> = { name: dialog.name.trim(), role: dialog.role, active: dialog.active }
+      if (renamed) body.emp_id = empId
       if (dialog.password) body.password = dialog.password
-      await api.adminUpdateUser(dialog.emp_id, body)
-      ElMessage.success(dialog.password ? '已保存，并重置口令（下次登录需改密）' : '已保存')
+      // 用原工号定位记录，改名后后端会返回新工号
+      await api.adminUpdateUser(dialog.origEmpId, body)
+      if (renamed) ElMessage.success(`工号已改为 ${empId}，历史记录归属已同步`)
+      else ElMessage.success(dialog.password ? '已保存，并重置口令（下次登录需改密）' : '已保存')
     }
     dialog.visible = false
     await load()
@@ -78,7 +91,9 @@ async function toggleActive(row: UserAdmin) {
   const next = row.active ? 0 : 1
   try {
     await api.adminUpdateUser(row.emp_id, { active: next })
-    ElMessage.success(next ? '已启用' : '已停用')
+    // 停用是「收权」动作，用红色提示与成功态区分开
+    if (next) ElMessage.success('已启用')
+    else ElMessage.error('已停用')
     await load()
   } catch {
     /* 自保护场景由后端返回 400，拦截器已提示 */
@@ -101,6 +116,21 @@ async function resetPwd(row: UserAdmin) {
 }
 
 const isSelf = (row: UserAdmin) => row.emp_id === me.profile?.emp_id
+
+async function removeUser(row: UserAdmin) {
+  try {
+    await ElMessageBox.confirm(
+      `确认移除账号「${row.name}（${row.emp_id}）」？\n账号将无法再登录；其历史转产记录与照片保留，只是不再归属任何账号。`,
+      '移除账号',
+      { type: 'warning', confirmButtonText: '确认移除', confirmButtonClass: 'el-button--danger' },
+    )
+  } catch {
+    return
+  }
+  await api.adminDeleteUser(row.emp_id)
+  ElMessage.error('账号已移除')
+  await load()
+}
 
 onMounted(load)
 </script>
@@ -146,22 +176,32 @@ onMounted(load)
         <el-table-column label="创建时间" width="136">
           <template #default="{ row }">{{ fmtDateTime(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" min-width="190">
+        <el-table-column label="操作" min-width="228">
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
             <el-button link type="primary" @click="resetPwd(row)">重置</el-button>
             <el-button link :type="row.active ? 'danger' : 'success'" :disabled="isSelf(row)" @click="toggleActive(row)">
               {{ row.active ? '停用' : '启用' }}
             </el-button>
+            <el-button link type="danger" :disabled="isSelf(row)" @click="removeUser(row)">移除</el-button>
           </template>
         </el-table-column>
       </el-table>
     </div>
 
-    <el-dialog v-model="dialog.visible" :title="dialog.isNew ? '新增用户' : `编辑用户 · ${dialog.emp_id}`" width="min(480px, 94vw)" :append-to-body="true" class="user-form-dialog">
+    <el-dialog v-model="dialog.visible" :title="dialog.isNew ? '新增用户' : `编辑用户 · ${dialog.origEmpId}`" width="min(480px, 94vw)" :append-to-body="true" class="user-form-dialog">
       <el-form label-width="88px" @submit.prevent>
         <el-form-item label="工号" required>
-          <el-input v-model="dialog.emp_id" :disabled="!dialog.isNew" placeholder="如 00660301" />
+          <el-input
+            v-model="dialog.emp_id"
+            :disabled="!dialog.isNew && dialog.origEmpId === me.profile?.emp_id"
+            placeholder="如 00660301"
+          />
+          <div v-if="!dialog.isNew" class="note emp-note">
+            {{ dialog.origEmpId === me.profile?.emp_id
+              ? '当前登录账号的工号不可修改。'
+              : '改工号会同步更新其历史转产记录的归属，改完该账号需重新登录。' }}
+          </div>
         </el-form-item>
         <el-form-item label="姓名" required>
           <el-input v-model="dialog.name" placeholder="真实姓名" />
@@ -195,6 +235,7 @@ onMounted(load)
 <style scoped>
 .title { margin: 0 0 4px; font-size: 20px; }
 .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.emp-note { width: 100%; margin-top: 4px; line-height: 1.5; }
 
 </style>
 <style>

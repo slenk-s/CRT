@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, fmtSize, statusText } from '@/api'
 import type { ChangeoverDetail, CheckItem, ItemOut } from '@/api/types'
 import AuthImage from '@/components/AuthImage.vue'
 import { compressImage } from '@/utils/image'
+import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
 const router = useRouter()
+const user = useUserStore()
 
 const coId = computed(() => (route.params.id ? String(route.params.id) : ''))
 const isCreate = computed(() => !coId.value)
@@ -16,7 +18,17 @@ const isCreate = computed(() => !coId.value)
 // ---------------- 创建态 ----------------
 const createForm = reactive({ line: '', batch: '', shot_date: '' })
 const creating = ref(false)
-const linesByWorkshop = ref<Record<string, string[]>>({})
+const allLines = ref<Record<string, string[]>>({})
+// 已设置「所属车间」时，线体下拉只展示该车间的线体（分组标题保留，便于看出是被限定了）
+const linesByWorkshop = computed(() => {
+  const ws = user.profile?.workshop || ''
+  return ws ? { [ws]: allLines.value[ws] || [] } : allLines.value
+})
+
+// 车间改动后，已选线体若不在新范围内就清掉，避免提交到别的车间
+watch(linesByWorkshop, (m) => {
+  if (createForm.line && !Object.values(m).flat().includes(createForm.line)) createForm.line = ''
+})
 
 async function createSession() {
   if (!createForm.line || !createForm.batch.trim()) {
@@ -133,7 +145,8 @@ async function saveStation(station: string) {
       check_result: JSON.stringify(checks),
       remark: d?.remark || '',
     })
-    Object.assign(it, updated)
+    const idx = detail.value!.items.findIndex(x => x.id === updated.id)
+    if (idx >= 0) detail.value!.items[idx] = updated
     syncDraft(updated)
     ElMessage.success(`${station} 已保存`)
   } finally {
@@ -143,20 +156,27 @@ async function saveStation(station: string) {
 
 async function onPickPhoto(station: string, ev: Event) {
   const input = ev.target as HTMLInputElement
-  const files = input.files
+  // input.files 是实时 FileList：先转成数组把 File 取出来，再清空 input，
+  // 否则 value='' 会把刚才捕获的列表一并清空，导致整个上传被静默跳过。
+  const files = Array.from(input.files || [])
   input.value = ''
-  if (!files || !files.length) return
+  if (!files.length) return
   const it = itemByStation.value[station]
   if (!it) return
   uploading.value = true
   try {
-    for (const file of Array.from(files)) {
+    for (const file of files) {
       const small = await compressImage(file)
       const updated = await api.itemUploadPhoto(it.id, small)
-      Object.assign(it, updated)
+      // 替换数组中的项以触发 computed 重新计算（Object.assign 原地修改不触发）
+      const idx = detail.value!.items.findIndex(x => x.id === updated.id)
+      if (idx >= 0) detail.value!.items[idx] = updated
     }
-    syncDraft(it)
+    // 不要在这里 syncDraft：它会把 drafts 里的勾选/备注重置为服务端已保存值，
+    // 抹掉用户还没点「保存本工位」的修改。上传照片不影响这两项。
     ElMessage.success(`已上传 ${files.length} 张照片`)
+  } catch {
+    ElMessage.error('照片上传失败，请检查网络后重试')
   } finally {
     uploading.value = false
   }
@@ -169,27 +189,13 @@ async function onDeletePhoto(it: ItemOut, seq: number) {
   const r = await api.itemDeletePhoto(it.id, seq)
   if (r.ok) {
     ElMessage.success('已删除')
+    // loadDetail 会按服务端数据重建 drafts，先把本地未保存的勾选/备注留一份
+    const keep = { ...drafts }
     await loadDetail()
+    Object.assign(drafts, keep)
   } else {
     ElMessage.error(r.error || '删除失败')
   }
-}
-
-async function removeItem(station: string) {
-  const it = itemByStation.value[station]
-  if (!it) return
-  try {
-    await ElMessageBox.confirm(`确认移除「${station}」条目及其草稿照片？`, '移除条目', {
-      type: 'warning',
-    })
-  } catch {
-    return
-  }
-  await api.itemDelete(it.id)
-  if (detail.value) detail.value.items = detail.value.items.filter((x) => x.id !== it.id)
-  delete drafts[it.id]
-  activeStation.value = ''
-  ElMessage.success('已移除')
 }
 
 async function submitAll() {
@@ -263,7 +269,7 @@ async function removeDraft() {
 onMounted(async () => {
   const [st, ci, ln] = await Promise.all([api.dictStations(), api.dictCheckItems(), api.dictLines()])
   stations.value = st.map((s) => ({ station: s.station, sort: s.sort }))
-  linesByWorkshop.value = ln.by_workshop
+  allLines.value = ln.by_workshop
   const map: Record<string, string[]> = {}
   for (const c of ci as CheckItem[]) (map[c.station] ||= []).push(c.item)
   checkMap.value = map
@@ -298,6 +304,7 @@ onMounted(async () => {
                 type="date"
                 value-format="YYYY-MM-DD"
                 placeholder="缺省今天"
+                :editable="false"
                 style="width: 100%"
               />
             </el-form-item>
@@ -422,15 +429,15 @@ onMounted(async () => {
                 <label class="btn-like">
                   <el-icon><Camera /></el-icon>
                   <span>{{ uploading ? '上传中…' : '拍照 / 选图' }}</span>
+                  <!-- 不加 capture：手机上带了 capture 会直接进相机、无法从相册选图；
+                       去掉后由系统弹出「相机 / 相册 / 文件」选择 -->
                   <input
                     type="file"
                     accept="image/*"
-                    capture="environment"
                     multiple
                     @change="(e) => onPickPhoto(s.station, e)"
                   />
                 </label>
-                <el-button size="small" @click="removeItem(s.station)">移除</el-button>
                 <el-button
                   size="small"
                   type="primary"

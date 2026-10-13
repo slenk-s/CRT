@@ -7,6 +7,7 @@ import type {
   CheckItemAdmin,
   DictLinesResponse,
   DictStation,
+  HealthInfo,
   ItemOut,
   LineAdmin,
   StationAdmin,
@@ -26,7 +27,9 @@ export const api = {
   // ---- 认证 ----
   login: (emp_id: string, password: string) =>
     http.post<TokenResponse>('/api/auth/login', { emp_id, password }).then((r) => r.data),
-  me: () => http.get('/api/auth/me').then((r) => r.data),
+  me: () => http.get<UserProfile>('/api/auth/me').then((r) => r.data),
+  setWorkshop: (workshop: string) =>
+    http.post<UserProfile>('/api/auth/workshop', { workshop }).then((r) => r.data),
   changePassword: (old_password: string, new_password: string) =>
     http.post('/api/auth/change-password', { old_password, new_password }).then((r) => r.data),
 
@@ -63,9 +66,7 @@ export const api = {
     const fd = new FormData()
     fd.append('file', file)
     return http
-      .post<ItemOut>(`/api/changeover/items/${itemId}/photo`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      .post<ItemOut>(`/api/changeover/items/${itemId}/photo`, fd)
       .then((r) => r.data)
   },
   itemDeletePhoto: (itemId: number, seq: number) =>
@@ -109,6 +110,8 @@ export const api = {
     http.post<UserAdmin>('/api/admin/users', body).then((r) => r.data),
   adminUpdateUser: (emp_id: string, body: Dict<unknown>) =>
     http.put<UserAdmin>(`/api/admin/users/${emp_id}`, body).then((r) => r.data),
+  adminDeleteUser: (emp_id: string) =>
+    http.delete<{ ok: boolean; emp_id: string }>(`/api/admin/users/${emp_id}`).then((r) => r.data),
 
   // ---- 统计 ----
   stats: (days: number) =>
@@ -123,6 +126,9 @@ export const api = {
       .get<WbQueryResponse>('/api/wb/query', { params, timeout: 120000, signal })
       .then((r) => r.data),
   wbStatus: () => http.get<WbStatus>('/api/wb/status').then((r) => r.data),
+
+  // ---- 系统状态（底部状态条轮询；silent：失败不弹全局提示）----
+  health: () => http.get<HealthInfo>('/api/health', { timeout: 10000, silent: true }).then((r) => r.data),
 }
 
 export const fmtDateTime = (s?: string | null) => (s ? s.replace('T', ' ').slice(0, 19) : '—')

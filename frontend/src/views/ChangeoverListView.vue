@@ -1,16 +1,21 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, fmtDateTime, statusText } from '@/api'
 import { downloadFile } from '@/api/http'
-import type { ChangeoverOut } from '@/api/types'
+import type { ChangeoverOut, DictLine } from '@/api/types'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
 const user = useUserStore()
 
-const lines = ref<string[]>([])
+const allLines = ref<DictLine[]>([])
+// 已设置「所属车间」时只列该车间的线体；车间在用户菜单里改了会自动重算
+const lines = computed(() => {
+  const ws = user.profile?.workshop || ''
+  return allLines.value.filter((x) => !ws || x.workshop === ws).map((x) => x.line)
+})
 const rows = ref<ChangeoverOut[]>([])
 const total = ref(0)
 const loading = ref(false)
@@ -19,7 +24,8 @@ const exporting = ref(false)
 const query = reactive({
   status: '' as '' | 'draft' | 'submitted',
   line: '',
-  range: [] as string[],
+  from: '',
+  to: '',
   keyword: '',
   mine: false,
   page: 1,
@@ -30,10 +36,8 @@ const params = computed(() => {
   const p: Record<string, unknown> = { page: query.page, size: query.size }
   if (query.status) p.status = query.status
   if (query.line) p.line = query.line
-  if (query.range?.length === 2) {
-    p.date_from = query.range[0]
-    p.date_to = query.range[1]
-  }
+  if (query.from) p.date_from = query.from
+  if (query.to) p.date_to = query.to
   if (query.keyword.trim()) p.keyword = query.keyword.trim()
   if (query.mine) p.mine = true
   return p
@@ -58,7 +62,8 @@ function search() {
 function reset() {
   query.status = ''
   query.line = ''
-  query.range = []
+  query.from = ''
+  query.to = ''
   query.keyword = ''
   query.mine = false
   search()
@@ -114,10 +119,17 @@ async function removeSubmitted(row: ChangeoverOut) {
   load()
 }
 
+// 车间改动后线体选项会变：若当前筛选值已不在范围内，清空并重查，避免筛出空列表
+watch(lines, (ls) => {
+  if (query.line && !ls.includes(query.line)) {
+    query.line = ''
+    load()
+  }
+})
+
 onMounted(async () => {
   try {
-    const d = await api.dictLines()
-    lines.value = d.items.map((x) => x.line)
+    allLines.value = (await api.dictLines()).items
   } catch {
     /* 字典下拉失败不影响列表 */
   }
@@ -143,14 +155,27 @@ onMounted(async () => {
     <div class="card panel mb">
       <el-form class="list-filter" inline label-width="68px" @submit.prevent>
         <el-form-item label="日期">
-          <el-date-picker
-            v-model="query.range"
-            type="daterange"
-            value-format="YYYY-MM-DD"
-            start-placeholder="开始"
-            end-placeholder="结束"
-            style="width: 240px"
-          />
+          <!-- 两个单日期选择器：每次只弹一个日历；editable=false 让输入框只读，
+               手机上点中不会唤起键盘（窄屏下两端各占一半宽度） -->
+          <div class="date-range">
+            <el-date-picker
+              v-model="query.from"
+              type="date"
+              value-format="YYYY-MM-DD"
+              placeholder="开始"
+              :editable="false"
+              style="width: 128px"
+            />
+            <span class="date-sep">-</span>
+            <el-date-picker
+              v-model="query.to"
+              type="date"
+              value-format="YYYY-MM-DD"
+              placeholder="结束"
+              :editable="false"
+              style="width: 128px"
+            />
+          </div>
         </el-form-item>
         <el-form-item label="线体">
           <el-select v-model="query.line" clearable filterable placeholder="全部" style="width: 140px">
@@ -178,7 +203,7 @@ onMounted(async () => {
 
     <div class="card">
       <el-table v-loading="loading" :data="rows" stripe class="changeover-table card-enter-active" style="width: 100%">
-        <el-table-column prop="shot_date" label="日期" width="94" />
+        <el-table-column prop="shot_date" label="日期" width="110" class-name="col-nowrap" />
         <el-table-column prop="workshop" label="车间" width="82" />
         <el-table-column prop="line" label="线体" width="88" />
         <el-table-column prop="batch" label="批次" min-width="150" show-overflow-tooltip />
@@ -199,7 +224,7 @@ onMounted(async () => {
         <el-table-column label="上传人" width="122">
           <template #default="{ row }">{{ row.uploader_name }}<small class="sub"> {{ row.uploader_emp_id }}</small></template>
         </el-table-column>
-        <el-table-column label="提交时间" width="142">
+        <el-table-column label="提交时间" width="176" class-name="col-nowrap">
           <template #default="{ row }">{{ fmtDateTime(row.submitted_at) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="132" fixed="right">
@@ -265,6 +290,8 @@ onMounted(async () => {
 .changeover-table .el-table__header .cell,
 .changeover-table .el-table__body .cell { padding-left: 6px; padding-right: 6px; }
 .changeover-table .el-button.is-link { padding: 0 6px; }
+/* 日期 / 提交时间强制单行（列宽已含 Element Plus 的 12px 单元格内边距） */
+:deep(.col-nowrap .cell) { white-space: nowrap; }
 .row-actions { display: flex; align-items: center; justify-content: center; gap: 6px; }
 .row-actions .el-dropdown { display: inline-flex; }
 .row-more-dropdown { min-width: 118px; max-width: calc(100vw - 28px); border-radius: 10px; box-shadow: 0 12px 28px rgba(31,45,61,.16); }
@@ -276,11 +303,18 @@ onMounted(async () => {
 .list-filter { width: 100%; }
 .list-filter .el-form-item { min-width: 0; }
 
+.date-range { display: flex; align-items: center; gap: 6px; }
+.date-sep { color: var(--text3); }
+
 @media (max-width: 640px) {
   .head-actions { width: 100%; max-width: 100%; grid-template-columns: 1fr 1fr; gap: 8px; padding: 14px 14px; margin: 0 0 14px; }
   .head-btn { padding-left: 10px; padding-right: 10px; font-size: 13px; }
   .pager { justify-content: center; padding-top: 10px; }
   .changeover-table .el-table__header .cell,
   .changeover-table .el-table__body .cell { padding-left: 4px; padding-right: 4px; }
+  /* 窄屏：两个日期框各占一半，不要按全局规则撑成 100% 而溢出 */
+  .date-range { width: 100%; }
+  .date-range :deep(.el-date-editor) { flex: 1 1 0; min-width: 0; width: auto !important; }
+  .list-filter .date-range { max-width: 100%; }
 }
 </style>

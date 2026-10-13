@@ -34,6 +34,10 @@ try:
 except ImportError:  # pragma: no cover
     smbclient = None
 
+# SMB 连接超时（秒）。默认值 60s 会让「共享盘不可达」的每次请求都长时间挂起
+# （Windows 上实测约 20s），离线降级路径必须先等完这段时间；局域网内 5s 足够。
+SMB_CONNECT_TIMEOUT = 5.0
+
 def photo_display_name(batch: str, station: str, seq: int, ext: str) -> str:
     """统一命名：`{批次}_{工位}_{序号}.{ext}`（清理非法字符后拼接）。"""
     return "%s_%s_%d.%s" % (
@@ -95,6 +99,7 @@ class SmbStorage:
                     self.host,
                     username=username,
                     password=self.password or None,
+                    connection_timeout=SMB_CONNECT_TIMEOUT,
                 )
             except Exception as e:  # noqa: BLE001
                 raise StorageError("连接共享盘失败(%s): %s" % (type(e).__name__, e)) from e
@@ -173,9 +178,22 @@ class SmbStorage:
             raise StorageError("打开文件流失败(%s): %s" % (rel, e)) from e
 
     def exists(self, rel: str) -> bool:
-        self._ensure()
+        """存在即 True；连接失败/文件缺失都返回 False（不抛异常）。
+
+        离线时调用方据此回退到本地存储，而不是让异常向上冒泡成 500。
+        """
         try:
+            self._ensure()
             smbclient.stat(self.unc(rel))
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
+    def reachable(self) -> bool:
+        """轻量连通性探测：能建立会话并访问 SMB_ROOT 即视为在线。"""
+        try:
+            self._ensure()
+            smbclient.stat(self.unc(self.root))
             return True
         except Exception:  # noqa: BLE001
             return False

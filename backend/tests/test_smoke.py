@@ -72,3 +72,46 @@ def test_change_password_flow(client, auth):
 
 def test_bad_token_rejected(client):
     assert client.get("/api/auth/me", headers={"Authorization": "Bearer nope"}).status_code == 401
+
+
+def test_workshop_setting_flow(client, auth):
+    """所属车间：默认不限定 → 可设置 → 未知车间被拒 → 可清空还原。"""
+    assert client.get("/api/auth/me", headers=auth).json()["workshop"] == ""
+
+    r = client.post("/api/auth/workshop", json={"workshop": "一车间"}, headers=auth)
+    assert r.status_code == 200 and r.json()["workshop"] == "一车间"
+    assert client.get("/api/auth/me", headers=auth).json()["workshop"] == "一车间"
+
+    bad = client.post("/api/auth/workshop", json={"workshop": "不存在的车间"}, headers=auth)
+    assert bad.status_code == 400
+    # 拒绝时不应改写已保存的值
+    assert client.get("/api/auth/me", headers=auth).json()["workshop"] == "一车间"
+
+    cleared = client.post("/api/auth/workshop", json={"workshop": ""}, headers=auth)
+    assert cleared.status_code == 200 and cleared.json()["workshop"] == ""
+
+
+def test_migrate_adds_workshop_to_legacy_db(tmp_path, monkeypatch):
+    """旧库（users 表没有 workshop 列）启动后应被自动补列，历史行取空串。"""
+    from sqlalchemy import create_engine
+
+    from app import db as app_db
+
+    eng = create_engine(f"sqlite:///{tmp_path / 'legacy.db'}")
+    with eng.begin() as c:
+        c.exec_driver_sql(
+            "CREATE TABLE users (emp_id VARCHAR(32) PRIMARY KEY, name VARCHAR(64),"
+            " password_hash VARCHAR(255), role VARCHAR(16), active INTEGER,"
+            " must_change_password INTEGER, created_at VARCHAR(32))"
+        )
+        c.exec_driver_sql(
+            "INSERT INTO users VALUES ('u1','旧用户','x','line',1,0,'2026-01-01 00:00:00')"
+        )
+        assert "workshop" not in {r[1] for r in c.exec_driver_sql("PRAGMA table_info(users)")}
+
+    monkeypatch.setattr(app_db, "engine", eng)
+    app_db.init_db()
+
+    with eng.begin() as c:
+        assert "workshop" in {r[1] for r in c.exec_driver_sql("PRAGMA table_info(users)")}
+        assert c.exec_driver_sql("SELECT workshop FROM users WHERE emp_id='u1'").scalar() == ""

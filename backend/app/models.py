@@ -28,6 +28,8 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(64))
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(16), default="line")   # line | admin
+    # 所属车间：空串=不限定（展示全部线体）；否则新建转产与列表筛选只展示该车间的线体
+    workshop: Mapped[str] = mapped_column(String(32), default="")
     active: Mapped[int] = mapped_column(Integer, default=1)
     must_change_password: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[str] = mapped_column(String(32), default=_now)
@@ -64,7 +66,7 @@ class CoItem(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     changeover_id: Mapped[int] = mapped_column(ForeignKey("changeover.id"))
     station: Mapped[str] = mapped_column(String(64))
-    current_ver: Mapped[int] = mapped_column(Integer, default=1)
+    current_ver: Mapped[int] = mapped_column(Integer, default=0)
     is_deleted: Mapped[int] = mapped_column(Integer, default=0)
     # ---- 草稿态（提交前的暂存）；提交后由 co_item_version 留存历史 ----
     draft_rel_path: Mapped[str] = mapped_column(String(512), default="")

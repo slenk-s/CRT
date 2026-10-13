@@ -97,16 +97,23 @@ body {
 .brand { font-size: 16px; font-weight: 600; white-space: nowrap; display: none; }
 .brand span { font-weight: 400; font-size: 12px; color: #a3b1c2; margin-left: 6px; }
 .mobile-nav .brand { display: block; margin-bottom: 10px; }
-.topnav { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; margin-left: 8px; }
-.topnav a {
-  color: #c0c4cc; padding: 8px 14px; border-radius: 6px;
-  text-decoration: none; font-size: 14px; transition: .15s;
-}
-.topnav a:hover { background: rgba(255, 255, 255, .08); color: #fff; }
-.topnav a.router-link-active { background: var(--primary); color: #fff; }
 .topbar .user-dropdown,
 .topbar .who { display: flex; align-items: center; gap: 10px; color: #c0c4cc; font-size: 13px; white-space: nowrap; }
 .topbar .who b { color: #fff; font-weight: 600; }
+/* 用户区恒靠最右（导航已移除，标题栏只剩：最左汉堡 + 居中状态标 + 最右用户区） */
+.topbar .user-dropdown { margin-left: auto; }
+
+/* SMB 状态标：宽屏绝对定位严格居中；窄屏回落到文档流，紧贴汉堡右侧避免压住用户区 */
+.topbar .smb-slot { display: flex; align-items: center; z-index: 2; }
+@media (min-width: 620px) {
+  .topbar .smb-slot {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    transform: translateX(-50%);
+  }
+}
 
 /* 卡片 */
 .card { background: var(--card); border: 1px solid var(--border-l); border-radius: 14px; box-shadow: 0 1px 3px rgba(0, 0, 0, .04); transition: box-shadow .18s ease, border-color .18s ease, transform .18s ease; }
@@ -203,8 +210,6 @@ body {
 @media (max-width: 900px) {
   .page { padding: 16px; }
   .topbar { height: auto; min-height: 56px; flex-wrap: nowrap; padding: 8px 12px; gap: 10px; }
-  .topnav { display: none; }
-  .topbar .user-dropdown { margin-left: auto; }
   .topbar .who { min-width: 0; }
   .topbar .who .who-name { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .head-title { box-sizing: border-box; width: 100%; max-width: 100%; height: auto; min-height: 70px; padding: 14px; margin: 0 0 12px; overflow-wrap: anywhere; word-break: break-word; }
@@ -305,17 +310,10 @@ body {
   .menu-toggle { display: inline-flex; }
 }
 
-/* 桌面端：隐藏标题，显示横向导航；用户区始终最右 */
-@media (min-width: 901px) {
-  .topbar .brand { display: none; }
-  .topnav { display: flex; }
-  .topbar .user-dropdown { margin-left: auto; }
-}
-/* 移动端：隐藏标题和横向导航，只保留最左汉堡与最右用户区 */
-@media (max-width: 900px) {
-  .topbar .brand, .topnav { display: none !important; }
-  .topbar .user-dropdown { margin-left: auto; }
-}
+/* 标题栏固定三块：最左汉堡（全尺寸都显示）、居中状态标、最右用户区。
+   导航不再放在标题栏里，统一从左侧汉堡面板打开。 */
+.topbar .brand { display: none; }
+.topbar .menu-toggle { display: inline-flex; }
 
 /* ============================================================
    Animation Effects - Spring / Glow / Morph

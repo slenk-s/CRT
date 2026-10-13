@@ -3,6 +3,12 @@ import { ElMessage } from 'element-plus'
 
 export const TOKEN_KEY = 'co_token'
 
+/** 请求级开关：silent=true 表示失败不弹全局提示，由调用方自行处理。 */
+declare module 'axios' {
+  export interface AxiosRequestConfig<D = any, P = any> { silent?: boolean }
+  export interface InternalAxiosRequestConfig<D = any, P = any> { silent?: boolean }
+}
+
 const http: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || '',
   timeout: 30000,
@@ -17,6 +23,8 @@ http.interceptors.request.use((config) => {
 http.interceptors.response.use(
   (resp) => resp,
   (error) => {
+    // 后台轮询（如底部 SMB 状态条）传 silent: true，失败只交给调用方处理，不弹全局提示
+    if (error?.config?.silent) return Promise.reject(error)
     const status = error?.response?.status
     const detail = error?.response?.data?.detail
     if (status === 401) {

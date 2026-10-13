@@ -33,12 +33,18 @@ from ..schemas import (
     ItemCreate,
     ItemOut,
     ItemPatch,
+    ItemPhotoOut,
     SubmitItemResult,
     SubmitResult,
     VersionOut,
 )
 from ..services.audit import log as audit
+from ..services import sync as sync_svc
 from ..services.storage import LocalStorage, SmbStorage, StorageError, photo_display_name, sanitize_segment
+
+# 测试覆盖点：注入 FakeStorage 等替身
+_test_smb_storage = None  # type: ignore[assignment]
+_test_local_storage = None  # type: ignore[assignment]
 
 router = APIRouter(prefix="/api/changeover", tags=["changeover"])
 
@@ -153,7 +159,7 @@ def _item_photos_out(db: Session, item: CoItem) -> list[ItemPhotoOut]:
     return [
         ItemPhotoOut(
             seq=r.seq, rel_path=r.rel_path, name=r.name, size=r.size or 0,
-            synced=r.synced or 1,
+            synced=r.synced if r.synced is not None else 1,
             uploader_emp_id=r.uploader_emp_id or "", uploader_name=r.uploader_name or "",
             created_at=r.created_at or "",
             url=f"/api/changeover/items/{item.id}/photos/{r.seq}",
@@ -164,11 +170,11 @@ def _item_photos_out(db: Session, item: CoItem) -> list[ItemPhotoOut]:
 
 def _next_seq(db: Session, item_id: int) -> int:
     """条目内下一个照片序号。"""
-    row = (db.query(CoItemPhoto.seq)
+    row = (db.query(CoItemPhoto)
               .filter(CoItemPhoto.item_id == item_id)
               .order_by(CoItemPhoto.seq.desc())
               .first())
-    return (row[0] or 0) + 1
+    return ((row.seq if row else 0) or 0) + 1
 
 
 def _build_rel(*parts: str) -> str:
@@ -194,10 +200,14 @@ def _final_rel(date: str, line: str, batch: str, station: str, name: str) -> str
 
 
 def _local_storage() -> LocalStorage:
+    if _test_local_storage is not None:
+        return _test_local_storage
     return LocalStorage(config.LOCAL_PHOTO_DIR)
 
 
 def _smb_storage_or_none() -> SmbStorage | None:
+    if _test_smb_storage is not None:
+        return _test_smb_storage
     if not (config.SMB_HOST and config.SMB_SHARE):
         return None
     try:
@@ -206,13 +216,27 @@ def _smb_storage_or_none() -> SmbStorage | None:
         return None
 
 
+def _smb_skip_write() -> bool:
+    """是否跳过 SMB、直接写本地。
+
+    只有后台探测**明确判定在线**时才去写 SMB；尚未探测（检测中/尚未检查）一律按离线
+    处理——否则每次上传都要先白等一次连接超时（离线时约 5s），界面看着像卡死了。
+    判定离线时本地 rel_path 与共享盘一致，后台同步服务会照原样补推。
+
+    测试替身（_test_smb_storage）优先于缓存判定，避免真实探测结果影响替身用例。
+    """
+    if _test_smb_storage is not None:
+        return False
+    return not sync_svc.smb_status().get("ok")
+
+
 def _write_photo_fallback(rel: str, data: bytes) -> tuple[int, str]:
     """写照片（SMB 优先，失败降级到本地）。返回 (synced, actual_rel)。
 
     - synced=1：文件已写入 SMB
     - synced=0：文件写入本地目录，后台自动同步
     """
-    smb = _smb_storage_or_none()
+    smb = None if _smb_skip_write() else _smb_storage_or_none()
     if smb is not None:
         try:
             smb.write_bytes(rel, data)
@@ -274,18 +298,23 @@ def _counts(db: Session, ids: list[int]) -> dict[int, tuple[int, int]]:
     """会话 → (条目数, 有照片条目数)；已提交会话以最新版本是否含照片为准。"""
     if not ids:
         return {}
-    rows = (db.query(CoItem.id, CoItem.changeover_id, CoItem.draft_rel_path)
+    rows = (db.query(CoItem.id, CoItem.changeover_id)
               .filter(CoItem.changeover_id.in_(ids), CoItem.is_deleted == 0)
               .all())
     if not rows:
         return {}
     latest = _latest_versions(db, [r[0] for r in rows])
+    # 查询所有条目的照片记录
+    photo_rows = (db.query(CoItemPhoto.item_id)
+                    .filter(CoItemPhoto.item_id.in_([r[0] for r in rows]))
+                    .all())
+    items_with_photo = {r[0] for r in photo_rows}
     agg: dict[int, tuple[int, int]] = {}
-    for item_id, co_id, draft_rel in rows:
+    for item_id, co_id in rows:
         total, with_photo = agg.get(co_id, (0, 0))
         total += 1
         ver = latest.get(item_id)
-        if draft_rel or (ver and ver.photo_rel_path):
+        if item_id in items_with_photo or (ver and ver.photo_rel_path):
             with_photo += 1
         agg[co_id] = (total, with_photo)
     return agg
@@ -520,12 +549,20 @@ def delete_changeover(
     items = db.query(CoItem).filter(CoItem.changeover_id == co_id).all()
     removed, failed = 0, []
     for it in items:
-        if it.draft_rel_path:
+        photos = db.query(CoItemPhoto).filter(CoItemPhoto.item_id == it.id).all()
+        for p in photos:
             try:
-                storage.remove(it.draft_rel_path)
-                removed += 1
-            except Exception as exc:  # noqa: BLE001  文件可能已不在，忽略
-                failed.append(f"{it.draft_rel_path}: {exc}")
+                if p.synced == 1:
+                    storage.remove(p.rel_path)
+                    removed += 1
+                else:
+                    local = _local_storage()
+                    if local.exists(p.rel_path):
+                        local.remove(p.rel_path)
+                        removed += 1
+            except Exception as exc:  # noqa: BLE001
+                failed.append(f"{p.rel_path}: {exc}")
+            db.delete(p)
         db.delete(it)
     audit(db, emp_id=user.emp_id, action="changeover.delete", target=f"co:{co.id}",
           detail={"line": co.line, "batch": co.batch, "files_removed": removed,
@@ -546,7 +583,8 @@ def submit_changeover(
 
     - 每条目的照片按 seq 升序遍历
     - 草稿照片（synced=1）从 _draft 区 move 到正式区
-    - 本地照片（synced=0）先读入内存再写到 SMB 正式区（离线降级）
+    - 本地照片（synced=0，离线上传）仅在本地 move 到正式目录，synced 保持 0，
+      等 SMB 恢复后由后台同步服务推送到共享盘
     - 未传照片的条目：允许（部分提交），仍生成 v1
     - 某条目归档失败：该条目失败并回报，其余照常转正
     - 全部条目都失败：不提交（保持草稿），返回 ok=False
@@ -580,8 +618,8 @@ def submit_changeover(
             try:
                 if p.synced == 1:
                     smb = _smb_storage_or_none()
-                    if not smb:
-                        raise StorageError("SMB 不可用")
+                    if not smb or not smb.reachable():
+                        raise StorageError("SMB 不可用（离线）")
                     if not smb.exists(p.rel_path):
                         raise StorageError("草稿照片文件缺失")
                     if dst != p.rel_path:
@@ -590,17 +628,12 @@ def submit_changeover(
                     local = _local_storage()
                     if not local.exists(p.rel_path):
                         raise StorageError("本地草稿照片文件缺失")
-                    smb = _smb_storage_or_none()
-                    if not smb:
-                        raise StorageError("SMB 不可用，无法归档")
-                    data = local.read_bytes(p.rel_path)
-                    smb.write_bytes(dst, data)
-                    try:
-                        local.remove(p.rel_path)
-                    except StorageError:
-                        pass
+                    # 离线提交：仅在本地把草稿移到正式目录，synced 保持 0，不触碰 SMB。
+                    # 本地与共享盘的相对路径结构一致，SMB 恢复后由后台同步服务
+                    # 按 rel_path 原样推送，无需再次改路径。
+                    local.move(p.rel_path, dst)
+                    p.synced = 0
                 p.rel_path = dst
-                p.synced = 1
                 archived.append(p)
             except StorageError as exc:
                 failures.append(SubmitItemResult(item_id=it.id, station=it.station, ok=False,

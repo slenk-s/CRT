@@ -61,7 +61,12 @@ def test_full_draft_flow(client, fake_storage, auth):
                     files={"file": ("a.jpg", JPEG, "image/jpeg")}, headers=auth)
     assert r.status_code == 200, r.text
     assert r.json()["has_draft_photo"] is True
-    assert fake_storage.files == {fake_storage.draft_rel(cid, item["id"], "jpg"): JPEG}
+    # 新命名：_draft/{co_id}/{item_id}/{批次}_{工位}_{序号}.jpg
+    from app.services.storage import photo_display_name
+    expected_name = photo_display_name("T-FLOW-1", "白平衡工位", 1, "jpg")
+    expected_path = f"slenk_\\FA_ROOT\\_draft\\{cid}\\{item['id']}\\{expected_name}"
+    assert list(fake_storage.files.keys()) == [expected_path]
+    assert fake_storage.files[expected_path] == JPEG
     # 列表统计
     row = client.get("/api/changeover", params={"keyword": "T-FLOW-1"}, headers=auth).json()["items"][0]
     assert row["item_total"] == 1 and row["item_with_photo"] == 1
@@ -92,7 +97,7 @@ def test_full_draft_flow(client, fake_storage, auth):
 
     # 删条目 → 草稿文件同步清理
     r = client.delete(f"/api/changeover/items/{item['id']}", headers=auth)
-    assert r.status_code == 200 and r.json()["file_removed"] is True
+    assert r.status_code == 200 and r.json()["files_removed"] >= 1
     assert fake_storage.files == {}
     # 删会话
     r = client.delete(f"/api/changeover/{cid}", headers=auth)

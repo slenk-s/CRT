@@ -21,7 +21,14 @@ from . import config, seed
 from .db import init_db
 from .routers import admin, auth, changeover, dicts, reports, wb
 from .services.storage import SmbStorage
-from .services.sync import start_sync_service, stop_sync_service
+from .services.sync import (
+    pending_count,
+    smb_status,
+    start_status_loop,
+    start_sync_service,
+    stop_status_loop,
+    stop_sync_service,
+)
 
 
 def _storage_status() -> dict[str, Any]:
@@ -65,9 +72,12 @@ async def lifespan(app: FastAPI):
         print("[同步] 后台线程已启动（本地照片 -> SMB）")
     else:
         print("[同步] SMB 未配置，跳过后台同步服务")
+    start_status_loop()
+    print("[状态] SMB 连通性探测线程已启动")
     try:
         yield
     finally:
+        stop_status_loop()
         stop_sync_service()
 
 
@@ -96,6 +106,8 @@ def health():
         "app": config.APP_NAME,
         "version": config.APP_VERSION,
         "storage": getattr(app.state, "storage_status", {"ok": None}),
+        "smb": smb_status(),
+        "pending_sync": pending_count(),
         "frontend": getattr(app.state, "frontend_dir", None),
     }
 

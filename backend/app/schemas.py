@@ -15,6 +15,7 @@ class UserOut(BaseModel):
     name: str
     role: str
     must_change_password: int = 0
+    workshop: str = ""          # 所属车间；空串 = 不限定（展示全部线体）
 
     model_config = {"from_attributes": True}
 
@@ -28,6 +29,11 @@ class TokenResponse(BaseModel):
 class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str = Field(..., min_length=6, description="新口令至少 6 位")
+
+
+class WorkshopUpdate(BaseModel):
+    """设置所属车间；空串表示不限定（展示全部线体）。"""
+    workshop: str = Field("", max_length=32)
 
 
 # ---- 字典 ----
@@ -266,6 +272,7 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
+    emp_id: str | None = Field(None, min_length=1, max_length=32, description="新工号（改名）")
     name: str | None = Field(None, min_length=1, max_length=64)
     role: str | None = Field(None, pattern="^(line|admin)$")
     active: int | None = Field(None, ge=0, le=1)

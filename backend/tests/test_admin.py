@@ -140,3 +140,47 @@ def test_user_management(client, auth):
     assert client.put("/api/admin/users/00660301", json={"role": "line"}, headers=auth).status_code == 400
     # 不存在
     assert client.put("/api/admin/users/NOPE", json={"active": 1}, headers=auth).status_code == 404
+
+
+def test_user_rename_cascades_and_delete(client, auth):
+    """改工号：唯一性校验 + 自保护 + 历史转产记录归属跟着改；删账号：记录保留。"""
+    client.post("/api/admin/users",
+                json={"emp_id": "R90001", "name": "改名前", "password": "Rename@123", "role": "line"},
+                headers=auth)
+    tok = client.post("/api/auth/login",
+                      json={"emp_id": "R90001", "password": "Rename@123"}).json()["token"]
+    line_auth = {"Authorization": f"Bearer {tok}"}
+
+    # 该账号建一条转产，用于验证改名后的归属同步
+    co = client.post("/api/changeover",
+                     json={"shot_date": "2026-10-13", "line": "1F02", "batch": "RENAMETEST-1"},
+                     headers=line_auth).json()
+
+    # 自保护：不能改自己的工号
+    assert client.put("/api/admin/users/00660301", json={"emp_id": "00660302"},
+                      headers=auth).status_code == 400
+    # 与已有账号冲突
+    assert client.put("/api/admin/users/R90001", json={"emp_id": "00660301"},
+                      headers=auth).status_code == 409
+    # 改名为 R90002
+    r = client.put("/api/admin/users/R90001", json={"emp_id": "R90002"}, headers=auth)
+    assert r.status_code == 200 and r.json()["emp_id"] == "R90002"
+    ids = {u["emp_id"] for u in client.get("/api/admin/users", headers=auth).json()}
+    assert "R90002" in ids and "R90001" not in ids
+    # 历史转产记录的归属同步到新工号
+    rows = client.get("/api/changeover", params={"batch": "RENAMETEST-1"}, headers=auth).json()["items"]
+    assert rows and rows[0]["uploader_emp_id"] == "R90002", rows
+    # 旧 token 失效（token 里存的是旧工号）
+    assert client.get("/api/auth/me", headers=line_auth).status_code == 401
+    # 新工号可登录
+    assert client.post("/api/auth/login",
+                       json={"emp_id": "R90002", "password": "Rename@123"}).status_code == 200
+
+    # 自保护：不能删自己
+    assert client.delete("/api/admin/users/00660301", headers=auth).status_code == 400
+    # 删除账号：账号消失，历史记录保留
+    assert client.delete("/api/admin/users/R90002", headers=auth).status_code == 200
+    assert "R90002" not in {u["emp_id"] for u in client.get("/api/admin/users", headers=auth).json()}
+    assert client.delete("/api/admin/users/R90002", headers=auth).status_code == 404
+    rows = client.get("/api/changeover", params={"batch": "RENAMETEST-1"}, headers=auth).json()["items"]
+    assert rows and rows[0]["id"] == co["id"]

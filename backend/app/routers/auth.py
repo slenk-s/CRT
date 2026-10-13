@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import get_current_user
-from ..models import User
-from ..schemas import ChangePasswordRequest, LoginRequest, TokenResponse, UserOut
+from ..models import DictLine, User
+from ..schemas import ChangePasswordRequest, LoginRequest, TokenResponse, UserOut, WorkshopUpdate
 from ..security import create_token, hash_password, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -24,6 +24,26 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)):
+    return UserOut.model_validate(user)
+
+
+@router.post("/workshop", response_model=UserOut)
+def set_workshop(
+    body: WorkshopUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """设置当前用户的所属车间（空串=不限定）。"""
+    ws = (body.workshop or "").strip()
+    if ws:
+        known = (db.query(DictLine)
+                   .filter(DictLine.workshop == ws, DictLine.active == 1)
+                   .first())
+        if not known:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"车间不存在：{ws}")
+    user.workshop = ws
+    db.add(user)
+    db.commit()
     return UserOut.model_validate(user)
 
 

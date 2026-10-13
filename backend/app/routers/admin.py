@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import require_admin
-from ..models import DictCheckItem, DictLine, DictStation, User
+from ..models import Changeover, CoItemPhoto, DictCheckItem, DictLine, DictStation, User
 from ..schemas import (
     CheckItemAdminOut,
     CheckItemCreate,
@@ -330,6 +330,30 @@ def update_user(emp_id: str, body: UserUpdate, db: Session = Depends(get_db),
     # 自保护：不能停用/降级自己
     if user.emp_id == admin.emp_id and (body.active == 0 or (body.role and body.role != "admin")):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "不能停用或降级当前登录账号")
+
+    renamed_from: str | None = None
+    if body.emp_id is not None:
+        new_emp_id = body.emp_id.strip()
+        if not new_emp_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "工号不能为空")
+        if new_emp_id != user.emp_id:
+            # 改自己的工号会让当前 token 立即失效（token 里存的是旧工号），挡住以免误操作
+            if user.emp_id == admin.emp_id:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                    "不能修改当前登录账号的工号（改后需重新登录），请用其他管理员账号操作")
+            if db.get(User, new_emp_id):
+                raise HTTPException(status.HTTP_409_CONFLICT, f"工号已存在：{new_emp_id}")
+            renamed_from = user.emp_id
+            # users.emp_id 是主键，但业务表里存的是工号字符串（无外键），改名要同步过去，
+            # 否则原账号会失去对自己历史记录的归属。审计日志保留当时工号，不改。
+            (db.query(Changeover)
+               .filter(Changeover.uploader_emp_id == renamed_from)
+               .update({"uploader_emp_id": new_emp_id}, synchronize_session=False))
+            (db.query(CoItemPhoto)
+               .filter(CoItemPhoto.uploader_emp_id == renamed_from)
+               .update({"uploader_emp_id": new_emp_id}, synchronize_session=False))
+            user.emp_id = new_emp_id
+
     if body.name is not None:
         user.name = body.name.strip()
     if body.role is not None:
@@ -339,7 +363,29 @@ def update_user(emp_id: str, body: UserUpdate, db: Session = Depends(get_db),
     if body.password:
         user.password_hash = hash_password(body.password)
         user.must_change_password = 1     # 重置口令后强制改密
-    audit(db, emp_id=admin.emp_id, action="admin.user.update", target=f"user:{emp_id}",
-          detail={k: v for k, v in body.model_dump(exclude_none=True).items() if k != "password"})
+
+    target = f"user:{user.emp_id}"
+    if renamed_from:
+        audit(db, emp_id=admin.emp_id, action="admin.user.rename", target=target,
+              detail={"from": renamed_from, "to": user.emp_id})
+    audit(db, emp_id=admin.emp_id, action="admin.user.update", target=target,
+          detail={k: v for k, v in body.model_dump(exclude_none=True).items()
+                  if k not in ("password", "emp_id")})
     db.commit()
     return user
+
+
+@router.delete("/users/{emp_id}")
+def delete_user(emp_id: str, db: Session = Depends(get_db),
+                admin: User = Depends(require_admin)):
+    """物理删除账号：历史转产记录保留（记录内存的是工号/姓名快照），只是不再能登录。"""
+    user = db.get(User, emp_id)
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "用户不存在")
+    if user.emp_id == admin.emp_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "不能删除当前登录账号")
+    audit(db, emp_id=admin.emp_id, action="admin.user.delete", target=f"user:{emp_id}",
+          detail={"name": user.name, "role": user.role})
+    db.delete(user)
+    db.commit()
+    return {"ok": True, "emp_id": emp_id}

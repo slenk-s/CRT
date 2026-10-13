@@ -45,6 +45,9 @@ class FakeStorage:
     def exists(self, rel):
         return rel in self.files
 
+    def reachable(self):
+        return True
+
     def move(self, src_rel, dst_rel):
         if src_rel not in self.files:
             raise StorageError(f"源文件不存在：{src_rel}")
@@ -60,3 +63,45 @@ class FakeStorage:
             yield io.BytesIO(data)
 
         return _cm()
+
+
+class BrokenSmbStorage:
+    """模拟 SMB 完全不可用：所有 IO 均抛 StorageError，用于离线降级测试。
+
+    `calls` 记录被调用的方法名（用于断言"确实尝试过写 SMB 才降级"）。
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def _broken(self, method: str, *a, **kw):
+        self.calls.append(method)
+        raise StorageError(f"SMB 不可用（模拟离线）：{method}")
+
+    def write_bytes(self, rel, data):
+        return self._broken("write_bytes", rel, data)
+
+    def read_bytes(self, rel):
+        return self._broken("read_bytes", rel)
+
+    def move(self, src, dst):
+        return self._broken("move", src, dst)
+
+    def remove(self, rel):
+        return self._broken("remove", rel)
+
+    def makedirs(self, rel):
+        return self._broken("makedirs", rel)
+
+    def listdir(self, rel=None):
+        return self._broken("listdir", rel)
+
+    def exists(self, rel):
+        return False
+
+    def reachable(self):
+        self.calls.append("reachable")
+        return False
+
+    def open_stream(self, rel):
+        return self._broken("open_stream", rel)

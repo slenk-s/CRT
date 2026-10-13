@@ -5,6 +5,8 @@ export interface UserProfile {
   name: string
   role: 'line' | 'admin'
   must_change_password: number
+  /** 所属车间；空串 = 不限定（展示全部线体） */
+  workshop: string
 }
 
 export interface TokenResponse {
@@ -94,6 +96,20 @@ export interface SubmitResult {
 export interface WbResult { key: string; ok: boolean; error: string; fields: Record<string, string> }
 export interface WbQueryResponse { mode: string; source: string; results: WbResult[] }
 export interface WbStatus { available: boolean; source: string | null; mode: string }
+
+/** 实时 SMB 连通性（/api/health → smb） */
+export interface SmbStatus { ok: boolean; message: string; checked_at: string }
+
+/** /api/health 返回体（前端只关心与状态条相关的字段） */
+export interface HealthInfo {
+  ok: boolean
+  app?: string
+  version?: string
+  storage?: { ok: boolean | null } | null
+  smb?: SmbStatus
+  pending_sync?: number
+  frontend?: string | null
+}
 
 export interface LineAdmin { id: number; workshop: string; line: string; sort: number; active: number }
 export interface StationAdmin { id: number; station: string; sort: number; active: number }

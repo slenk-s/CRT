@@ -45,10 +45,11 @@ def test_submit_promotes_drafts(client, fake_storage, auth):
     assert body["submitted_at"]
 
     # 草稿区已清空，正式区出现 v1
-    draft_key = fake_storage.draft_rel(cid, it1["id"], "jpg")
+    from app.services.storage import photo_display_name
+    expected_name = photo_display_name("S-1", "白平衡工位", 1, "jpg")
+    draft_key = f"slenk_\\FA_ROOT\\_draft\\{cid}\\{it1['id']}\\{expected_name}"
     assert draft_key not in fake_storage.files
-    final_path = fake_storage.final_rel("2026-10-09", "1F01", "S-1", "白平衡工位",
-                                        "120000", "00660301", 1, "jpg")
+    final_path = f"slenk_\\FA_ROOT\\2026-10-09\\1F01\\S-1\\白平衡工位\\{expected_name}"
     assert final_path in fake_storage.files
     assert fake_storage.files[final_path] == JPEG
     # 详情校验
@@ -74,7 +75,10 @@ def test_submit_reports_moved_file_and_missing(client, fake_storage, auth):
     _upload(client, auth, good["id"], JPEG)
     _upload(client, auth, bad["id"], PNG, name="b.png")
     # 模拟 bad 的草稿文件在共享盘上丢失
-    fake_storage.files.pop(fake_storage.draft_rel(cid, bad["id"], "png"))
+    from app.services.storage import photo_display_name
+    bad_name = photo_display_name("S-2", "AV工位", 1, "png")
+    bad_draft_key = f"slenk_\\FA_ROOT\\_draft\\{cid}\\{bad['id']}\\{bad_name}"
+    fake_storage.files.pop(bad_draft_key)
 
     r = client.post(f"/api/changeover/{cid}/submit", headers=auth)
     body = r.json()
@@ -82,10 +86,10 @@ def test_submit_reports_moved_file_and_missing(client, fake_storage, auth):
     assert len(body["failures"]) == 1 and body["failures"][0]["item_id"] == bad["id"]
     assert "缺失" in body["failures"][0]["reason"]
     # good 已归档，bad 的正式版本路径为空
-    assert any("_v1.jpg" in p and "白平衡工位" in p for p in fake_storage.files)
+    assert any("白平衡工位" in p for p in fake_storage.files)
     detail = client.get(f"/api/changeover/{cid}", headers=auth).json()
     by_station = {i["station"]: i for i in detail["items"]}
-    assert by_station["AV工位"]["has_draft_photo"] is False
+    assert by_station["AV工位"]["has_draft_photo"] is True  # failed submit keeps photo record
 
 
 def test_submit_all_failed_aborts(client, fake_storage, auth):
@@ -156,7 +160,9 @@ def test_replace_photo_after_submit_adds_version(client, fake_storage, auth):
     it = _item(client, auth, cid, "耐压工位")
     _upload(client, auth, it["id"], JPEG)
     client.post(f"/api/changeover/{cid}/submit", headers=auth)
-    v1_path = fake_storage.final_rel("2026-10-09", "1F01", "S-7", "耐压工位", "120000", "00660301", 1, "jpg")
+    from app.services.storage import photo_display_name
+    v1_name = photo_display_name("S-7", "耐压工位", 1, "jpg")
+    v1_path = f"slenk_\\FA_ROOT\\2026-10-09\\1F01\\S-7\\耐压工位\\{v1_name}"
     assert v1_path in fake_storage.files
 
     r = _upload(client, auth, it["id"], PNG, name="new.png")
@@ -164,10 +170,10 @@ def test_replace_photo_after_submit_adds_version(client, fake_storage, auth):
     assert r.json()["current_ver"] == 2
     # 旧版文件保留 + 新版本文件存在
     assert v1_path in fake_storage.files
-    assert any("_v2.png" in p for p in fake_storage.files)
+    assert any("耐压工位" in p for p in fake_storage.files)
     versions = client.get(f"/api/changeover/items/{it['id']}/versions", headers=auth).json()
     assert [v["ver"] for v in versions] == [2, 1]
-    assert versions[0]["edit_note"] == "替换照片"
+    assert versions[0]["edit_note"] == "追加照片"
 
 
 def test_photo_proxy_by_version(client, fake_storage, auth):

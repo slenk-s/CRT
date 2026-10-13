@@ -228,18 +228,28 @@ onMounted(async () => {
           <el-tag v-if="!it.has_draft_photo" size="small" type="warning" effect="plain" style="margin-left: 6px">
             无照片
           </el-tag>
+          <el-tag v-if="it.has_photo_pending_sync" size="small" type="danger" effect="plain" style="margin-left: 6px" class="pending-tag">
+            <el-icon><WarningFilled /></el-icon>待同步
+          </el-tag>
         </h4>
 
         <div class="thumbs-grid">
           <template v-if="it.draft_photos?.length">
-            <AuthImage
+            <div
               v-for="ph in it.draft_photos"
               :key="`${it.current_ver}-${ph.seq}`"
-              :path="ph.url"
-              :on-preview="(u) => (previewUrl = u)"
-            />
+              class="photo-wrap"
+              :class="{ 'photo-pending': ph.synced === 0 }"
+            >
+              <AuthImage :path="ph.url" :on-preview="(u) => (previewUrl = u)" />
+              <span v-if="ph.synced === 0" class="pending-badge">待同步</span>
+            </div>
           </template>
           <div v-else class="thumb-ph">未拍照</div>
+        </div>
+        <div v-if="it.has_photo_pending_sync" class="sync-note">
+          <el-icon><WarningFilled /></el-icon>
+          部分照片在本地暂存，SMB 恢复后自动同步
         </div>
 
         <div class="checks-view">
@@ -274,7 +284,8 @@ onMounted(async () => {
           <el-button size="small" @click="openVersions(it)">
             <el-icon><Clock /></el-icon>版本历史
           </el-button>
-          <el-button size="small" type="danger" plain @click="removeItem(it)">移除</el-button>
+          <!-- 草稿中的工位不可移除（草稿请回录入页删整份草稿）；已提交记录为软删 -->
+          <el-button v-if="isSubmitted" size="small" type="danger" plain @click="removeItem(it)">移除</el-button>
         </div>
       </div>
     </div>
@@ -377,6 +388,18 @@ onMounted(async () => {
 .remark { margin-top: 8px; font-size: 13px; color: var(--text2); background: #fafcff; border-left: 3px solid #d9ecff; padding: 6px 10px; border-radius: 0 6px 6px 0; }
 .thumbs-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .thumbs-grid .thumb { width: 80px; height: 80px; object-fit: cover; border-radius: 4px; }
+.photo-wrap { position: relative; display: inline-block; }
+.photo-pending { border-radius: 4px; }
+.photo-pending :deep(img) { border: 2px solid var(--el-color-danger); }
+.pending-badge {
+  position: absolute; bottom: 2px; left: 2px;
+  font-size: 10px; padding: 1px 4px; border-radius: 3px;
+  background: var(--el-color-danger); color: #fff; white-space: nowrap;
+}
+.sync-note {
+  display: flex; align-items: center; gap: 5px;
+  margin-top: 6px; font-size: 12px; color: var(--el-color-danger);
+}
 .item-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
 .version-body { max-height: min(62vh, 540px); overflow-y: auto; padding-right: 4px; }
 .version-timeline { padding-left: 2px; }

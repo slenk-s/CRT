@@ -13,7 +13,8 @@ export default defineConfig(({ mode }) => {
       alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
     },
     server: {
-      port: 5173,
+      // 允许用 PORT 环境变量指定端口（供预览/CI 自动分配端口），缺省 5173
+      port: Number(process.env.PORT) || 5173,
       host: true,
       proxy: {
         '/api': { target: proxyTarget, changeOrigin: true },
